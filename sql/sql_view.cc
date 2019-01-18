@@ -1141,7 +1141,6 @@ err:
   DBUG_RETURN(error);
 }
 
-#define MD5_LEN 32
 /**
   Check is TABLE_LEST and SHARE match
   @param[in]  view                TABLE_LIST of the view
@@ -1150,28 +1149,22 @@ err:
   @return false on error or misspatch
 */
 
-bool mariadb_view_version_check(TABLE_LIST *view, TABLE_SHARE *share)
+bool mariadb_view_version_get(TABLE_SHARE *share)
 {
-  LEX_STRING md5;
-  char md5_buffer[MD5_LEN + 1];
-  md5.str= md5_buffer;
-  md5.length= MD5_LEN;
+  DBUG_ASSERT(share->is_view);
 
-  /*
-    Check that both were views (view->is_view() could not be checked
-    because it is not opened).
-  */
-  if (!share->is_view || view->md5.length != MD5_LEN)
-    return FALSE;
+  if (!(share->tabledef_version.str=
+        (uchar*) alloc_root(&share->mem_root, VIEW_MD5_LEN + 1)))
+    return TRUE;
+  share->tabledef_version.length= VIEW_MD5_LEN;
 
   DBUG_ASSERT(share->view_def != NULL);
-  if (share->view_def->parse((uchar*)&md5, NULL,
-                                      view_md5_parameters,
-                                      1,
-                                      &file_parser_dummy_hook))
-    return FALSE;
-  DBUG_ASSERT(md5.length == MD5_LEN);
-  return (strncmp(md5.str, view->md5.str, MD5_LEN) == 0);
+  if (share->view_def->parse((uchar *) &share->tabledef_version, NULL,
+                             view_md5_parameters, 1,
+                             &file_parser_dummy_hook))
+    return TRUE;
+  DBUG_ASSERT(share->tabledef_version.length == VIEW_MD5_LEN);
+  return FALSE;
 }
 
 /**

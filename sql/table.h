@@ -66,6 +66,8 @@ struct Name_resolution_context;
 */
 typedef ulonglong nested_join_map;
 
+#define VIEW_MD5_LEN 32
+
 
 #define tmp_file_prefix "#sql"			/**< Prefix for tmp tables */
 #define tmp_file_prefix_length 4
@@ -2144,6 +2146,10 @@ struct TABLE_LIST
     to view with SQL SECURITY DEFINER)
   */
   Security_context *security_ctx;
+  uchar tabledef_version_buf[MY_UUID_SIZE > VIEW_MD5_LEN ?
+                             MY_UUID_SIZE + 1 : VIEW_MD5_LEN + 1];
+  LEX_CUSTRING tabledef_version;
+
   /*
     This view security context (non-zero only for views with
     SQL SECURITY DEFINER)
@@ -2455,6 +2461,26 @@ struct TABLE_LIST
   {
     m_table_ref_type= table_ref_type_arg;
     m_table_ref_version= table_ref_version_arg;
+  }
+
+  void set_table_id(TABLE_SHARE *s)
+  {
+    set_table_ref_id(s);
+    set_tabledef_version(s);
+  }
+
+  void set_tabledef_version(TABLE_SHARE *s)
+  {
+    if (!tabledef_version.length && s->tabledef_version.length)
+    {
+      DBUG_ASSERT(s->tabledef_version.length <
+                  sizeof(tabledef_version_buf));
+      tabledef_version.str= tabledef_version_buf;
+      memcpy(tabledef_version_buf, s->tabledef_version.str,
+             (tabledef_version.length= s->tabledef_version.length));
+      // safety
+      tabledef_version_buf[tabledef_version.length]= 0;
+    }
   }
 
   /* Set of functions returning/setting state of a derived table/view. */

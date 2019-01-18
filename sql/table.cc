@@ -643,7 +643,11 @@ enum open_frm_error open_table_def(THD *thd, TABLE_SHARE *share, uint flags)
       if (!share->view_def)
         share->error= OPEN_FRM_ERROR_ALREADY_ISSUED;
       else
+      {
         share->error= OPEN_FRM_OK;
+        if (mariadb_view_version_get(share))
+          share->error= OPEN_FRM_CORRUPTED;
+      }
     }
     else
       share->error= OPEN_FRM_NOT_A_TABLE;
@@ -8468,19 +8472,22 @@ bool TABLE_LIST::is_table_ref_id_equal(TABLE_SHARE *s)
     bool res= m_table_ref_version == s->get_table_ref_version();
 
     /*
-      If definition is different object with view we can check MD5 in frm
-      to check if the same view got into table definition cache again.
+      If definition is different check content version
     */
-    if (!res &&
-        tp == TABLE_REF_VIEW &&
-        mariadb_view_version_check(this, s))
+    if (tabledef_version.length &&
+        tabledef_version.length == s->tabledef_version.length &&
+        memcmp(tabledef_version.str, s->tabledef_version.str,
+               tabledef_version.length) == 0)
     {
-      // to avoid relatively expensive parsing of frm next time
-      set_table_ref_id(s);
+      set_table_id(s);
       return TRUE;
     }
+    else
+      tabledef_version.length= 0;
     return res;
   }
+  else
+    set_tabledef_version(s);
   return FALSE;
 }
 
