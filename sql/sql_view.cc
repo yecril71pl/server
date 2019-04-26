@@ -1227,6 +1227,10 @@ bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
     mysql_derived_reinit(thd, NULL, table);
 
     DEBUG_SYNC(thd, "after_cached_view_opened");
+    if (!share->tabledef_version.length)
+    {
+      mariadb_view_version_get(share);
+    }
     DBUG_RETURN(0);
   }
 
@@ -1280,6 +1284,18 @@ bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
                                       required_view_parameters,
                                       &file_parser_dummy_hook)))
     goto end;
+  if (!share->tabledef_version.length)
+  {
+    share->tabledef_version.str= (const uchar *)
+                                 memdup_root(&share->mem_root,
+                                             (const void *)table->md5.str,
+                                             (share->tabledef_version.length=
+                                              table->md5.length));
+  }
+  if (!table->tabledef_version.length)
+  {
+    table->set_view_def_version(&table->md5);
+  }
 
   /*
     check old format view .frm

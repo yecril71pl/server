@@ -1839,15 +1839,15 @@ retry_share:
       goto err_lock;
     }
 
+    /* Open view */
+    if (mysql_make_view(thd, share, table_list, false))
+      goto err_lock;
+
     /*
       This table is a view. Validate its metadata version: in particular,
       that it was a view when the statement was prepared.
     */
     if (check_and_update_table_version(thd, table_list, share))
-      goto err_lock;
-
-    /* Open view */
-    if (mysql_make_view(thd, share, table_list, false))
       goto err_lock;
 
 
@@ -2749,7 +2749,9 @@ bool tdc_open_view(THD *thd, TABLE_LIST *table_list, uint flags)
 
   DBUG_ASSERT(share->is_view);
 
-  if (flags & CHECK_METADATA_VERSION)
+  err= mysql_make_view(thd, share, table_list, (flags & OPEN_VIEW_NO_PARSE));
+
+  if (!err && (flags & CHECK_METADATA_VERSION))
   {
     /*
       Check TABLE_SHARE-version of view only if we have been instructed to do
@@ -2764,7 +2766,6 @@ bool tdc_open_view(THD *thd, TABLE_LIST *table_list, uint flags)
       goto ret;
   }
 
-  err= mysql_make_view(thd, share, table_list, (flags & OPEN_VIEW_NO_PARSE));
 ret:
   tdc_release_share(share);
 
