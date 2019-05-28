@@ -5350,19 +5350,19 @@ private:
 public:
   sp_cursor()
    :result(NULL, false),
-    m_lex_keeper(NULL),
+    m_lex_keeper_ptr(NULL),
     server_side_cursor(NULL)
   { }
   sp_cursor(THD *thd_arg, sp_lex_keeper *lex_keeper, bool view_structure_only)
    :result(thd_arg, view_structure_only),
-    m_lex_keeper(lex_keeper),
+    m_lex_keeper_ptr(lex_keeper),
     server_side_cursor(NULL)
   {}
 
   virtual ~sp_cursor()
   { destroy(); }
 
-  sp_lex_keeper *get_lex_keeper() { return m_lex_keeper; }
+  sp_lex_keeper *get_lex_keeper() { return m_lex_keeper_ptr; }
 
   int open(THD *thd);
 
@@ -5379,13 +5379,13 @@ public:
   {
     sp_cursor_statistics::reset();
     result.reset(thd_arg);
-    m_lex_keeper= lex_keeper;
+    m_lex_keeper_ptr= lex_keeper;
     server_side_cursor= NULL;
   }
 
 private:
   Select_fetch_into_spvars result;
-  sp_lex_keeper *m_lex_keeper;
+  sp_lex_keeper *m_lex_keeper_ptr;
   Server_side_cursor *server_side_cursor;
   void destroy();
 };

@@ -1242,11 +1242,28 @@ private:
   TABLE_LIST **lex_query_tables_own_last;
 };
 
+/*
+  Class for basic instructions using LEX (there are some other more complex
+  using LEX)
+*/
+
+class sp_lex_basic_instr : public sp_instr
+{
+  protected:
+
+  sp_lex_keeper m_lex_keeper;
+
+  public:
+
+  sp_lex_basic_instr(uint ip, sp_pcontext *ctx, LEX *lex, bool lex_owner)
+      : sp_instr(ip, ctx), m_lex_keeper(lex, lex_owner)
+  {}
+};
 
 /**
   Call out to some prepared SQL statement.
 */
-class sp_instr_stmt : public sp_instr
+class sp_instr_stmt : public sp_lex_basic_instr
 {
   sp_instr_stmt(const sp_instr_stmt &);	/**< Prevent use of these */
   void operator=(sp_instr_stmt &);
@@ -1256,7 +1273,7 @@ public:
   LEX_STRING m_query;		///< For thd->query
 
   sp_instr_stmt(uint ip, sp_pcontext *ctx, LEX *lex)
-    : sp_instr(ip, ctx), m_lex_keeper(lex, TRUE)
+    : sp_lex_basic_instr(ip, ctx, lex, TRUE)
   {
     m_query.str= 0;
     m_query.length= 0;
@@ -1271,14 +1288,10 @@ public:
 
   virtual void print(String *str);
 
-private:
-
-  sp_lex_keeper m_lex_keeper;
-
 }; // class sp_instr_stmt : public sp_instr
 
 
-class sp_instr_set : public sp_instr
+class sp_instr_set : public sp_lex_basic_instr
 {
   sp_instr_set(const sp_instr_set &);	/**< Prevent use of these */
   void operator=(sp_instr_set &);
@@ -1289,9 +1302,8 @@ public:
                const Sp_rcontext_handler *rh,
 	       uint offset, Item *val,
                LEX *lex, bool lex_resp)
-    : sp_instr(ip, ctx),
-      m_rcontext_handler(rh), m_offset(offset), m_value(val),
-      m_lex_keeper(lex, lex_resp)
+    : sp_lex_basic_instr(ip, ctx, lex, lex_resp),
+      m_rcontext_handler(rh), m_offset(offset), m_value(val)
   {}
 
   virtual ~sp_instr_set()
@@ -1308,7 +1320,6 @@ protected:
   const Sp_rcontext_handler *m_rcontext_handler;
   uint m_offset;		///< Frame offset
   Item *m_value;
-  sp_lex_keeper m_lex_keeper;
 }; // class sp_instr_set : public sp_instr
 
 
@@ -1389,7 +1400,7 @@ public:
 /**
   Set NEW/OLD row field value instruction. Used in triggers.
 */
-class sp_instr_set_trigger_field : public sp_instr
+class sp_instr_set_trigger_field : public sp_lex_basic_instr
 {
   sp_instr_set_trigger_field(const sp_instr_set_trigger_field &);
   void operator=(sp_instr_set_trigger_field &);
@@ -1399,9 +1410,9 @@ public:
   sp_instr_set_trigger_field(uint ip, sp_pcontext *ctx,
                              Item_trigger_field *trg_fld,
                              Item *val, LEX *lex)
-    : sp_instr(ip, ctx),
+    : sp_lex_basic_instr(ip, ctx, lex, TRUE),
       trigger_field(trg_fld),
-      value(val), m_lex_keeper(lex, TRUE)
+      value(val)
   {}
 
   virtual ~sp_instr_set_trigger_field()
@@ -1416,7 +1427,6 @@ public:
 private:
   Item_trigger_field *trigger_field;
   Item *value;
-  sp_lex_keeper m_lex_keeper;
 }; // class sp_instr_trigger_field : public sp_instr
 
 
@@ -1592,7 +1602,7 @@ public:
 }; // class sp_instr_preturn : public sp_instr
 
 
-class sp_instr_freturn : public sp_instr
+class sp_instr_freturn : public sp_lex_basic_instr
 {
   sp_instr_freturn(const sp_instr_freturn &);	/**< Prevent use of these */
   void operator=(sp_instr_freturn &);
@@ -1601,8 +1611,7 @@ public:
 
   sp_instr_freturn(uint ip, sp_pcontext *ctx,
 		   Item *val, const Type_handler *handler, LEX *lex)
-    : sp_instr(ip, ctx), m_value(val), m_type_handler(handler),
-      m_lex_keeper(lex, TRUE)
+    : sp_lex_basic_instr(ip, ctx, lex, TRUE), m_value(val), m_type_handler(handler)
   {}
 
   virtual ~sp_instr_freturn()
@@ -1624,7 +1633,6 @@ protected:
 
   Item *m_value;
   const Type_handler *m_type_handler;
-  sp_lex_keeper m_lex_keeper;
 
 }; // class sp_instr_freturn : public sp_instr
 
@@ -1759,7 +1767,7 @@ private:
 
 
 /** This is DECLARE CURSOR */
-class sp_instr_cpush : public sp_instr,
+class sp_instr_cpush : public sp_lex_basic_instr,
                        public sp_cursor
 {
   sp_instr_cpush(const sp_instr_cpush &); /**< Prevent use of these */
@@ -1768,7 +1776,7 @@ class sp_instr_cpush : public sp_instr,
 public:
 
   sp_instr_cpush(uint ip, sp_pcontext *ctx, LEX *lex, uint offset)
-    : sp_instr(ip, ctx), m_lex_keeper(lex, TRUE), m_cursor(offset)
+    : sp_lex_basic_instr(ip, ctx, lex, TRUE), m_cursor(offset)
   {}
 
   virtual ~sp_instr_cpush()
@@ -1786,7 +1794,6 @@ public:
   virtual void cleanup_stmt() { /* no op */ }
 private:
 
-  sp_lex_keeper m_lex_keeper;
   uint m_cursor;                /**< Frame offset (for debugging) */
 
 }; // class sp_instr_cpush : public sp_instr
@@ -1853,18 +1860,17 @@ private:
   Initialize the structure of a cursor%ROWTYPE variable
   from the LEX containing the cursor SELECT statement.
 */
-class sp_instr_cursor_copy_struct: public sp_instr
+class sp_instr_cursor_copy_struct: public sp_lex_basic_instr
 {
   /**< Prevent use of these */
   sp_instr_cursor_copy_struct(const sp_instr_cursor_copy_struct &);
   void operator=(sp_instr_cursor_copy_struct &);
-  sp_lex_keeper m_lex_keeper;
   uint m_cursor;
   uint m_var;
 public:
   sp_instr_cursor_copy_struct(uint ip, sp_pcontext *ctx, uint coffs,
                               sp_lex_cursor *lex, uint voffs)
-    : sp_instr(ip, ctx), m_lex_keeper(lex, FALSE),
+    : sp_lex_basic_instr(ip, ctx, lex, FALSE),
       m_cursor(coffs),
       m_var(voffs)
   {}
