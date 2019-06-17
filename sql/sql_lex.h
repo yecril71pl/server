@@ -3026,6 +3026,7 @@ struct Account_options: public USER_RESOURCES
 };
 
 class Query_arena_memroot;
+class sp_lex_local;
 /* The state of the lex parsing. This is saved in the THD struct */
 
 
@@ -4551,6 +4552,7 @@ public:
                                 Item_result return_type,
                                 const LEX_CSTRING &soname);
   Spvar_definition *row_field_name(THD *thd, const Lex_ident_sys_st &name);
+  virtual sp_lex_local *sp_lex_ref() { return NULL; }
 };
 
 
@@ -4738,10 +4740,11 @@ struct st_lex_local: public LEX, public Sql_alloc
   2. sp_assignment_lex based constructs:
     - CURSOR parameter assignments
 */
-class sp_lex_local: public st_lex_local
+
+class sp_lex: public st_lex_local
 {
-public:
-  sp_lex_local(THD *thd, const LEX *oldlex)
+  public:
+  sp_lex(THD *thd, const LEX *oldlex)
   {
     /* Reset most stuff. */
     start(thd);
@@ -4753,6 +4756,27 @@ public:
     trg_table_fields.empty();
     sp_lex_in_use= false;
   }
+};
+
+class sp_lex_local: public sp_lex, public Query_arena
+{
+  sp_lex_local(const sp_lex_local &);	/**< Prevent use of these */
+  void operator=(sp_lex_local &);
+protected:
+  MEM_ROOT main_mem_root;
+public:
+  sp_lex_local *next_sublex; // link in sp LEXs (m_all_lexes) list
+
+  void *operator new(size_t size) throw();
+  void operator delete(void *ptr, size_t size) throw();
+  sp_lex_local(THD *thd, const LEX *oldlex)
+    :sp_lex(thd, oldlex), Query_arena(&main_mem_root, STMT_INITIALIZED_FOR_SP)
+  {}
+ ~sp_lex_local()
+ {
+   free_items();
+ }
+ sp_lex_local * sp_lex_ref()  { return this; }
 };
 
 
@@ -4798,17 +4822,14 @@ public:
 class sp_assignment_lex: public sp_lex_local
 {
   Item *m_item;       // The expression
-  Item *m_free_list;  // The associated free_list (sub-expressions)
 public:
   sp_assignment_lex(THD *thd, LEX *oldlex)
    :sp_lex_local(thd, oldlex),
-    m_item(NULL),
-    m_free_list(NULL)
+    m_item(NULL)
   { }
-  void set_item_and_free_list(Item *item, Item *free_list)
+  void set_item_and_free_list(Item *item)
   {
     m_item= item;
-    m_free_list= free_list;
   }
   Item *get_item() const
   {
@@ -4816,7 +4837,7 @@ public:
   }
   Item *get_free_list() const
   {
-    return m_free_list;
+    return free_list;
   }
 };
 

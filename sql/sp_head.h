@@ -318,6 +318,9 @@ public:
   */
   SQL_I_List<Item_trigger_field> m_trg_table_fields;
 
+  // All all stement's LEXs
+  SQL_I_List<sp_lex_local> m_all_lexes;
+
   static void *
   operator new(size_t size) throw ();
 
@@ -457,7 +460,8 @@ private:
       to avoid double pointers to the same objects from "prm" and
       from the sp_instr_set instance.
     */
-    prm->set_item_and_free_list(NULL, NULL);
+    prm->set_item_and_free_list(NULL);
+    prm->free_list= NULL;
     return false;
   }
 
@@ -592,24 +596,7 @@ public:
     @todo Conflicting comment in sp_head.cc
   */
   bool
-  restore_lex(THD *thd)
-  {
-    DBUG_ENTER("sp_head::restore_lex");
-    LEX *oldlex= (LEX *) m_lex.pop();
-    if (!oldlex)
-      DBUG_RETURN(false); // Nothing to restore
-    LEX *sublex= thd->lex;
-    // This restores thd->lex and thd->stmt_lex
-    if (thd->restore_from_local_lex_to_old_lex(oldlex))
-      DBUG_RETURN(true);
-    if (!sublex->sp_lex_in_use)
-    {
-      sublex->sphead= NULL;
-      lex_end(sublex);
-      delete sublex;
-    }
-    DBUG_RETURN(false);
-  }
+  restore_lex(THD *thd);
 
   /// Put the instruction on the backpatch list, associated with the label.
   int
@@ -1006,18 +993,19 @@ public:
 };
 
 
-class sp_lex_cursor: public sp_lex_local, public Query_arena
+class sp_lex_cursor: public sp_lex_local
 {
 public:
+/*
   sp_lex_cursor(THD *thd, const LEX *oldlex, MEM_ROOT *mem_root_arg)
    :sp_lex_local(thd, oldlex),
     Query_arena(mem_root_arg, STMT_INITIALIZED_FOR_SP)
   { }
+*/
   sp_lex_cursor(THD *thd, const LEX *oldlex)
-   :sp_lex_local(thd, oldlex),
-    Query_arena(thd->lex->sphead->get_main_mem_root(), STMT_INITIALIZED_FOR_SP)
+   :sp_lex_local(thd, oldlex)
   { }
-  ~sp_lex_cursor() { free_items(); }
+  ~sp_lex_cursor() { }
   void cleanup_stmt() { }
   Query_arena *query_arena() { return this; }
   bool validate()
@@ -1181,13 +1169,12 @@ public:
   }
   virtual ~sp_lex_keeper()
   {
-    if (m_lex_resp)
-    {
-      /* Prevent endless recursion. */
-      m_lex->sphead= NULL;
-      lex_end(m_lex);
-      delete m_lex;
-    }
+    sp_lex_local *sl;
+    for (sl= m_lex->sphead->m_all_lexes.first;
+         sl && sl != m_lex;
+         sl=sl->next_sublex);
+
+    DBUG_ASSERT(sl != NULL);
   }
 
   /**
@@ -1214,7 +1201,7 @@ public:
   }
 
 private:
-
+  //sp_lex_keeper *next;
   LEX *m_lex;
   /**
     Indicates whenever this sp_lex_keeper instance responsible

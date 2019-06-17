@@ -3638,8 +3638,7 @@ opt_parenthesized_cursor_formal_parameters:
 sp_cursor_stmt_lex:
           {
             DBUG_ASSERT(thd->lex->sphead);
-            if (unlikely(!($$= new (thd->mem_root)
-                           sp_lex_cursor(thd, thd->lex))))
+            if (unlikely(!($$= new sp_lex_cursor(thd, thd->lex))))
               MYSQL_YYABORT;
           }
         ;
@@ -4270,8 +4269,7 @@ sp_proc_stmt_goto_oracle:
 assignment_source_lex:
           {
             DBUG_ASSERT(Lex->sphead);
-            if (unlikely(!($$= new (thd->mem_root)
-                           sp_assignment_lex(thd, thd->lex))))
+            if (unlikely(!($$= new sp_assignment_lex(thd, thd->lex))))
               MYSQL_YYABORT;
           }
         ;
@@ -4287,8 +4285,7 @@ assignment_source_expr:
             DBUG_ASSERT($1 == thd->lex);
             $$= $1;
             $$->sp_lex_in_use= true;
-            $$->set_item_and_free_list($3, thd->free_list);
-            thd->free_list= NULL;
+            $$->set_item_and_free_list($3);
             if ($$->sphead->restore_lex(thd))
               MYSQL_YYABORT;
           }
@@ -4305,7 +4302,7 @@ for_loop_bound_expr:
             DBUG_ASSERT($1 == thd->lex);
             $$= $1;
             $$->sp_lex_in_use= true;
-            $$->set_item_and_free_list($3, NULL);
+            $$->set_item_and_free_list($3);
             if (unlikely($$->sphead->restore_lex(thd)))
               MYSQL_YYABORT;
             Lex->current_select->parsing_place= NO_MATTER;

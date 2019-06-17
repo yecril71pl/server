@@ -5995,8 +5995,7 @@ bool LEX::sp_for_loop_implicit_cursor_statement(THD *thd,
   if (sp_declare_cursor(thd, &name, cur, NULL, true))
     return true;
   DBUG_ASSERT(thd->lex == this);
-  if (unlikely(!(bounds->m_index=
-                 new (thd->mem_root) sp_assignment_lex(thd, this))))
+  if (unlikely(!(bounds->m_index= new sp_assignment_lex(thd, this))))
     return true;
   bounds->m_index->sp_lex_in_use= true;
   sphead->reset_lex(thd, bounds->m_index);
@@ -6013,7 +6012,8 @@ bool LEX::sp_for_loop_implicit_cursor_statement(THD *thd,
   */
   if (!(item= new (thd->mem_root) Item_field(thd, NULL, name)))
     return true;
-  bounds->m_index->set_item_and_free_list(item, NULL);
+  bounds->m_index->set_item_and_free_list(item);
+  bounds->m_index->free_list= NULL;
   if (thd->lex->sphead->restore_lex(thd))
     return true;
   DBUG_ASSERT(thd->lex == this);
@@ -10481,4 +10481,40 @@ Lex_cast_type_st::create_typecast_item_or_error(THD *thd, Item *item,
              ErrConvString(buf, length, system_charset_info).ptr());
   }
   return tmp;
+}
+
+
+void *sp_lex_local::operator new(size_t size) throw()
+{
+  DBUG_ENTER("sp_lex_local::operator new");
+  MEM_ROOT own_root;
+  sp_lex_local *sp_lex;
+
+  init_sql_alloc(&own_root, "sp_lex_local",
+                 MEM_ROOT_BLOCK_SIZE, MEM_ROOT_PREALLOC, MYF(0));
+  sp_lex= (sp_lex_local *) alloc_root(&own_root, size);
+  if (sp_lex == NULL)
+    DBUG_RETURN(NULL);
+  sp_lex->main_mem_root= own_root;
+  DBUG_PRINT("info", ("sp_lex: %p, mem_root %p", sp_lex, &sp_lex->mem_root));
+  DBUG_RETURN(sp_lex);
+}
+
+
+void sp_lex_local::operator delete(void *ptr, size_t size) throw()
+{
+  DBUG_ENTER("sp_head::operator delete");
+  MEM_ROOT own_root;
+
+  if (ptr == NULL)
+    DBUG_VOID_RETURN;
+
+  sp_lex_local *sp_lex= (sp_lex_local *) ptr;
+
+  own_root= sp_lex->main_mem_root;
+  DBUG_PRINT("info", ("sp_lex: %p mem_root %p moved before freeing to %p",
+                      sp_lex, &sp_lex->mem_root, &own_root));
+  free_root(&own_root, MYF(0));
+
+  DBUG_VOID_RETURN;
 }

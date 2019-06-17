@@ -552,6 +552,99 @@ enum killed_type
   KILL_TYPE_QUERY
 };
 
+/* The following macro is to make init of Query_arena simpler */
+#ifdef DBUG_ASSERT_EXISTS
+#define INIT_ARENA_DBUG_INFO is_backup_arena= 0; is_reprepared= FALSE;
+#else
+#define INIT_ARENA_DBUG_INFO
+#endif
+
+class Query_arena
+{
+public:
+  /*
+    List of items created in the parser for this query. Every item puts
+    itself to the list on creation (see Item::Item() for details))
+  */
+  Item *free_list;
+  MEM_ROOT *mem_root;                   // Pointer to current memroot
+#ifdef DBUG_ASSERT_EXISTS
+  bool is_backup_arena; /* True if this arena is used for backup. */
+  bool is_reprepared;
+#endif
+  /*
+    The states relfects three diffrent life cycles for three
+    different types of statements:
+    Prepared statement: STMT_INITIALIZED -> STMT_PREPARED -> STMT_EXECUTED.
+    Stored procedure:   STMT_INITIALIZED_FOR_SP -> STMT_EXECUTED.
+    Other statements:   STMT_CONVENTIONAL_EXECUTION never changes.
+  */
+  enum enum_state
+  {
+    STMT_INITIALIZED= 0, STMT_INITIALIZED_FOR_SP= 1, STMT_PREPARED= 2,
+    STMT_CONVENTIONAL_EXECUTION= 3, STMT_EXECUTED= 4, STMT_ERROR= -1
+  };
+
+  enum_state state;
+
+public:
+  /* We build without RTTI, so dynamic_cast can't be used. */
+  enum Type
+  {
+    STATEMENT, PREPARED_STATEMENT, STORED_PROCEDURE
+  };
+
+  Query_arena(MEM_ROOT *mem_root_arg, enum enum_state state_arg) :
+    free_list(0), mem_root(mem_root_arg), state(state_arg)
+  { INIT_ARENA_DBUG_INFO; }
+  /*
+    This constructor is used only when Query_arena is created as
+    backup storage for another instance of Query_arena.
+  */
+  Query_arena() { INIT_ARENA_DBUG_INFO; }
+
+  virtual Type type() const;
+  virtual ~Query_arena() {};
+
+  inline bool is_stmt_prepare() const { return state == STMT_INITIALIZED; }
+  inline bool is_stmt_prepare_or_first_sp_execute() const
+  { return (int)state < (int)STMT_PREPARED; }
+  inline bool is_stmt_prepare_or_first_stmt_execute() const
+  { return (int)state <= (int)STMT_PREPARED; }
+  inline bool is_stmt_execute() const
+  { return state == STMT_PREPARED || state == STMT_EXECUTED; }
+  inline bool is_conventional() const
+  { return state == STMT_CONVENTIONAL_EXECUTION; }
+
+  inline void* alloc(size_t size) { return alloc_root(mem_root,size); }
+  inline void* calloc(size_t size)
+  {
+    void *ptr;
+    if (likely((ptr=alloc_root(mem_root,size))))
+      bzero(ptr, size);
+    return ptr;
+  }
+  inline char *strdup(const char *str)
+  { return strdup_root(mem_root,str); }
+  inline char *strmake(const char *str, size_t size)
+  { return strmake_root(mem_root,str,size); }
+  inline void *memdup(const void *str, size_t size)
+  { return memdup_root(mem_root,str,size); }
+  inline void *memdup_w_gap(const void *str, size_t size, size_t gap)
+  {
+    void *ptr;
+    if (likely((ptr= alloc_root(mem_root,size+gap))))
+      memcpy(ptr,str,size);
+    return ptr;
+  }
+
+  void set_query_arena(Query_arena *set);
+
+  void free_items();
+  /* Close the active state associated with execution of this statement */
+  virtual void cleanup_stmt();
+};
+
 #include "sql_lex.h"				/* Must be here */
 
 class Delayed_insert;
@@ -990,100 +1083,6 @@ inline bool is_supported_parser_charset(CHARSET_INFO *cs)
 #ifdef MYSQL_SERVER
 
 void free_tmp_table(THD *thd, TABLE *entry);
-
-
-/* The following macro is to make init of Query_arena simpler */
-#ifdef DBUG_ASSERT_EXISTS
-#define INIT_ARENA_DBUG_INFO is_backup_arena= 0; is_reprepared= FALSE;
-#else
-#define INIT_ARENA_DBUG_INFO
-#endif
-
-class Query_arena
-{
-public:
-  /*
-    List of items created in the parser for this query. Every item puts
-    itself to the list on creation (see Item::Item() for details))
-  */
-  Item *free_list;
-  MEM_ROOT *mem_root;                   // Pointer to current memroot
-#ifdef DBUG_ASSERT_EXISTS
-  bool is_backup_arena; /* True if this arena is used for backup. */
-  bool is_reprepared;
-#endif
-  /*
-    The states relfects three diffrent life cycles for three
-    different types of statements:
-    Prepared statement: STMT_INITIALIZED -> STMT_PREPARED -> STMT_EXECUTED.
-    Stored procedure:   STMT_INITIALIZED_FOR_SP -> STMT_EXECUTED.
-    Other statements:   STMT_CONVENTIONAL_EXECUTION never changes.
-  */
-  enum enum_state
-  {
-    STMT_INITIALIZED= 0, STMT_INITIALIZED_FOR_SP= 1, STMT_PREPARED= 2,
-    STMT_CONVENTIONAL_EXECUTION= 3, STMT_EXECUTED= 4, STMT_ERROR= -1
-  };
-
-  enum_state state;
-
-public:
-  /* We build without RTTI, so dynamic_cast can't be used. */
-  enum Type
-  {
-    STATEMENT, PREPARED_STATEMENT, STORED_PROCEDURE
-  };
-
-  Query_arena(MEM_ROOT *mem_root_arg, enum enum_state state_arg) :
-    free_list(0), mem_root(mem_root_arg), state(state_arg)
-  { INIT_ARENA_DBUG_INFO; }
-  /*
-    This constructor is used only when Query_arena is created as
-    backup storage for another instance of Query_arena.
-  */
-  Query_arena() { INIT_ARENA_DBUG_INFO; }
-
-  virtual Type type() const;
-  virtual ~Query_arena() {};
-
-  inline bool is_stmt_prepare() const { return state == STMT_INITIALIZED; }
-  inline bool is_stmt_prepare_or_first_sp_execute() const
-  { return (int)state < (int)STMT_PREPARED; }
-  inline bool is_stmt_prepare_or_first_stmt_execute() const
-  { return (int)state <= (int)STMT_PREPARED; }
-  inline bool is_stmt_execute() const
-  { return state == STMT_PREPARED || state == STMT_EXECUTED; }
-  inline bool is_conventional() const
-  { return state == STMT_CONVENTIONAL_EXECUTION; }
-
-  inline void* alloc(size_t size) { return alloc_root(mem_root,size); }
-  inline void* calloc(size_t size)
-  {
-    void *ptr;
-    if (likely((ptr=alloc_root(mem_root,size))))
-      bzero(ptr, size);
-    return ptr;
-  }
-  inline char *strdup(const char *str)
-  { return strdup_root(mem_root,str); }
-  inline char *strmake(const char *str, size_t size)
-  { return strmake_root(mem_root,str,size); }
-  inline void *memdup(const void *str, size_t size)
-  { return memdup_root(mem_root,str,size); }
-  inline void *memdup_w_gap(const void *str, size_t size, size_t gap)
-  {
-    void *ptr;
-    if (likely((ptr= alloc_root(mem_root,size+gap))))
-      memcpy(ptr,str,size);
-    return ptr;
-  }
-
-  void set_query_arena(Query_arena *set);
-
-  void free_items();
-  /* Close the active state associated with execution of this statement */
-  virtual void cleanup_stmt();
-};
 
 
 class Query_arena_memroot: public Query_arena, public Sql_alloc

@@ -798,12 +798,24 @@ sp_head::~sp_head()
   LEX *lex;
   sp_instr *i;
   DBUG_ENTER("sp_head::~sp_head");
+  DBUG_PRINT("info", ("Delete %p", this));
 
   /* sp_head::restore_thd_mem_root() must already have been called. */
   DBUG_ASSERT(m_thd == NULL);
 
   for (uint ip = 0 ; (i = get_instr(ip)) ; ip++)
+  {
+    DBUG_PRINT("XXX", ("Delete instruction %p", i));
     delete i;
+  }
+  for (sp_lex_local *sl= m_all_lexes.first; sl; )
+  {
+    sp_lex_local *next= sl->next_sublex;
+    delete sl;
+    sl= next;
+  }
+  m_all_lexes.empty();
+  DBUG_PRINT("XXX", ("Clean lex list for %p", this));
   delete_dynamic(&m_instr);
   delete m_pcont;
   free_items();
@@ -2385,10 +2397,11 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
 bool
 sp_head::reset_lex(THD *thd, sp_lex_local *sublex)
 {
-  DBUG_ENTER("sp_head::reset_lex");
+  DBUG_ENTER("sp_head::reset_lex(2)");
   LEX *oldlex= thd->lex;
 
   thd->set_local_lex(sublex);
+  DBUG_ASSERT(thd->free_list == NULL);
 
   DBUG_RETURN(m_lex.push_front(oldlex));
 }
@@ -2398,8 +2411,50 @@ bool
 sp_head::reset_lex(THD *thd)
 {
   DBUG_ENTER("sp_head::reset_lex");
-  sp_lex_local *sublex= new (thd->mem_root) sp_lex_local(thd, thd->lex);
-  DBUG_RETURN(sublex ? reset_lex(thd, sublex) : true);
+  sp_lex_local *sublex= new sp_lex_local(thd, thd->lex);
+  bool res= sublex ? reset_lex(thd, sublex) : true;
+  DBUG_RETURN(res);
+}
+
+
+bool
+sp_head::restore_lex(THD *thd)
+{
+  DBUG_ENTER("sp_head::restore_lex");
+  LEX *oldlex= (LEX *) m_lex.pop();
+  if (!oldlex)
+    DBUG_RETURN(false); // Nothing to restore
+  LEX *sublex= thd->lex;
+  sp_lex_local *sp_lex= sublex->sp_lex_ref();
+  // This restores thd->lex and thd->stmt_lex
+  if (thd->restore_from_local_lex_to_old_lex(oldlex))
+    DBUG_RETURN(true);
+  if (sp_lex)
+  {
+    sp_lex->free_list= thd->free_list;
+    thd->free_list= NULL;
+  }
+  if (!sublex->sp_lex_in_use)
+  {
+    sublex->sphead= NULL;
+    lex_end(sublex);
+    delete sublex;
+  }
+  else if (sp_lex)
+  {
+    uint cnt= 0;
+    m_all_lexes.link_in_list(sp_lex, &sp_lex->next_sublex);
+    DBUG_PRINT("info", ("%p added to %p head as # %u",
+          sp_lex, this, m_all_lexes.elements));
+    for (sp_lex_local *sl= m_all_lexes.first; sl; sl= sl->next_sublex)
+    {
+      cnt++;
+      DBUG_PRINT("XXX", ("# %u : %p", cnt, sl));
+    }
+    DBUG_ASSERT(cnt == m_all_lexes.elements);
+  }
+
+  DBUG_RETURN(false);
 }
 
 
