@@ -1034,7 +1034,7 @@ public:
 // "Instructions"...
 //
 
-class sp_instr :public Query_arena, public Sql_alloc
+class sp_instr :public Sql_alloc
 {
   sp_instr(const sp_instr &);	/**< Prevent use of these */
   void operator=(sp_instr &);
@@ -1048,11 +1048,20 @@ public:
 
   /// Should give each a name or type code for debugging purposes?
   sp_instr(uint ip, sp_pcontext *ctx)
-    :Query_arena(0, STMT_INITIALIZED_FOR_SP), marked(0), m_ip(ip), m_ctx(ctx)
+    :marked(0), m_ip(ip), m_ctx(ctx)
   {}
 
   virtual ~sp_instr()
-  { free_items(); }
+  {}
+
+  virtual Query_arena *get_arena() { return 0; }
+  Item *get_free_list()
+  {
+    Query_arena *arena= get_arena();
+    if (arena)
+      return arena->free_list;
+    return NULL;
+  }
 
 
   /**
@@ -1200,6 +1209,8 @@ public:
     m_lex->safe_to_cache_query= 0;
   }
 
+  Query_arena *get_arena();
+
 private:
   //sp_lex_keeper *next;
   LEX *m_lex;
@@ -1245,6 +1256,8 @@ class sp_lex_basic_instr : public sp_instr
   sp_lex_basic_instr(uint ip, sp_pcontext *ctx, LEX *lex, bool lex_owner)
       : sp_instr(ip, ctx), m_lex_keeper(lex, lex_owner)
   {}
+
+  virtual Query_arena *get_arena() { return m_lex_keeper.get_arena(); }
 };
 
 /**
@@ -1275,7 +1288,7 @@ public:
 
   virtual void print(String *str);
 
-}; // class sp_instr_stmt : public sp_instr
+}; // class sp_instr_stmt
 
 
 class sp_instr_set : public sp_lex_basic_instr
@@ -1307,7 +1320,7 @@ protected:
   const Sp_rcontext_handler *m_rcontext_handler;
   uint m_offset;		///< Frame offset
   Item *m_value;
-}; // class sp_instr_set : public sp_instr
+}; // class sp_instr_set 
 
 
 /*
@@ -1414,7 +1427,7 @@ public:
 private:
   Item_trigger_field *trigger_field;
   Item *value;
-}; // class sp_instr_trigger_field : public sp_instr
+}; // class sp_instr_trigger_field
 
 
 /**
@@ -1546,6 +1559,8 @@ public:
       m_cont_dest= new_dest;
   }
 
+  virtual Query_arena *get_arena() { return m_lex_keeper.get_arena(); }
+
 private:
 
   Item *m_expr;			///< The condition
@@ -1621,7 +1636,7 @@ protected:
   Item *m_value;
   const Type_handler *m_type_handler;
 
-}; // class sp_instr_freturn : public sp_instr
+}; // class sp_instr_freturn
 
 
 class sp_instr_hpush_jump : public sp_instr_jump
@@ -1783,7 +1798,7 @@ private:
 
   uint m_cursor;                /**< Frame offset (for debugging) */
 
-}; // class sp_instr_cpush : public sp_instr
+}; // class sp_instr_cpush
 
 
 class sp_instr_cpop : public sp_instr

@@ -10518,3 +10518,12 @@ void sp_lex_local::operator delete(void *ptr, size_t size) throw()
 
   DBUG_VOID_RETURN;
 }
+
+void sp_lex_local::set_arena()
+{
+  thd->set_n_backup_active_arena(this, &backup_arena);
+}
+void sp_lex_local::restore_arena()
+{
+  thd->restore_active_arena(this, &backup_arena);
+}

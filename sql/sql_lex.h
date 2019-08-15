@@ -4764,6 +4764,7 @@ class sp_lex_local: public sp_lex, public Query_arena
   void operator=(sp_lex_local &);
 protected:
   MEM_ROOT main_mem_root;
+  Query_arena backup_arena;
 public:
   sp_lex_local *next_sublex; // link in sp LEXs (m_all_lexes) list
 
@@ -4776,6 +4777,8 @@ public:
  {
    free_items();
  }
+ void set_arena();
+ void restore_arena();
  sp_lex_local * sp_lex_ref()  { return this; }
 };
 

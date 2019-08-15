@@ -3899,6 +3899,8 @@ void THD::set_n_backup_active_arena(Query_arena *set, Query_arena *backup)
 {
   DBUG_ENTER("THD::set_n_backup_active_arena");
   DBUG_ASSERT(backup->is_backup_arena == FALSE);
+  DBUG_PRINT("XXX", ("set arena %p (%s > %s) backup %p",
+                     set, this->mem_root->name, set->mem_root->name, backup));
 
   backup->set_query_arena(this);
   set_query_arena(set);
@@ -3919,6 +3921,8 @@ void THD::restore_active_arena(Query_arena *set, Query_arena *backup)
 {
   DBUG_ENTER("THD::restore_active_arena");
   DBUG_ASSERT(backup->is_backup_arena);
+  DBUG_PRINT("XXX", ("restore arena %p (%s) backup %p (%s)",
+                     set, set->mem_root->name, backup, backup->mem_root->name));
   set->set_query_arena(this);
   set_query_arena(backup);
 #ifdef DBUG_ASSERT_EXISTS

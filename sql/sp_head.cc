@@ -1042,7 +1042,7 @@ subst_spvars(THD *thd, sp_instr *instr, LEX_STRING *query_str)
   Copy_query_with_rewrite acc(thd, query_str->str, query_str->length, &qbuf);
 
   /* Find rewritable Items used in this statement */
-  for (Item *item= instr->free_list; item; item= item->next)
+  for (Item *item= instr->get_free_list(); item; item= item->next)
   {
     Rewritable_query_parameter *rqp= item->get_rewritable_query_parameter();
     if (rqp && rqp->pos_in_query)
@@ -1333,7 +1333,8 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
       during the first execution (for example expanding of '*' or the
       items made during other permanent subquery transformations).
     */
-    thd->stmt_arena= i;
+    if (!(thd->stmt_arena= i->get_arena()))
+      thd->stmt_arena= old_arena;
 
     /*
       Will write this SP statement into binlog separately.
@@ -1359,8 +1360,16 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 
     thd->m_digest= parent_digest;
 
-    if (i->free_list)
-      cleanup_items(i->free_list);
+    {
+      DBUG_PRINT("YYY", ("free attempt"));
+      Item *to_free= i->get_free_list();
+      if (to_free)
+      {
+        DBUG_PRINT("YYY", ("free from arena %p %s",
+                           i->get_arena(),i->get_arena()->mem_root->name));
+        cleanup_items(to_free);
+      }
+    }
 
     /*
       If we've set thd->user_var_events_alloc to mem_root of this SP
@@ -2403,6 +2412,10 @@ sp_head::reset_lex(THD *thd, sp_lex_local *sublex)
   thd->set_local_lex(sublex);
   DBUG_ASSERT(thd->free_list == NULL);
 
+  sp_lex_local *sp_lex= sublex->sp_lex_ref();
+  if (sp_lex)
+    sp_lex->set_arena();
+
   DBUG_RETURN(m_lex.push_front(oldlex));
 }
 
@@ -2431,8 +2444,7 @@ sp_head::restore_lex(THD *thd)
     DBUG_RETURN(true);
   if (sp_lex)
   {
-    sp_lex->free_list= thd->free_list;
-    thd->free_list= NULL;
+    sp_lex->restore_arena();
   }
   if (!sublex->sp_lex_in_use)
   {
@@ -2446,11 +2458,13 @@ sp_head::restore_lex(THD *thd)
     m_all_lexes.link_in_list(sp_lex, &sp_lex->next_sublex);
     DBUG_PRINT("info", ("%p added to %p head as # %u",
           sp_lex, this, m_all_lexes.elements));
+#ifndef DBUG_OFF
     for (sp_lex_local *sl= m_all_lexes.first; sl; sl= sl->next_sublex)
     {
       cnt++;
       DBUG_PRINT("XXX", ("# %u : %p", cnt, sl));
     }
+#endif /*DBUG_OFF*/
     DBUG_ASSERT(cnt == m_all_lexes.elements);
   }
 
@@ -3025,15 +3039,16 @@ sp_head::show_create_routine(THD *thd, const Sp_handler *sph)
 
 int sp_head::add_instr(sp_instr *instr)
 {
-  instr->free_list= m_thd->free_list;
-  m_thd->free_list= 0;
+  //instr->free_list= m_thd->free_list;
+  //m_thd->free_list= 0;
+  //DBUG_ASSERT(m_thd->free_list == 0 || );
   /*
     Memory root of every instruction is designated for permanent
     transformations (optimizations) made on the parsed tree during
     the first execution. It points to the memory root of the
     entire stored procedure, as their life span is equal.
   */
-  instr->mem_root= &main_mem_root;
+  //instr->mem_root= &main_mem_root;
   instr->m_lineno= m_thd->m_parser_state->m_lip.yylineno;
   return insert_dynamic(&m_instr, (uchar*)&instr);
 }
@@ -3489,6 +3504,12 @@ int sp_lex_keeper::cursor_reset_lex_and_exec_core(THD *thd, uint *nextp,
   cleanup_items(thd->stmt_arena->free_list);
   thd->stmt_arena= old_arena;
   return res;
+}
+
+
+Query_arena *sp_lex_keeper::get_arena()
+{
+  return m_lex->sp_lex_ref();
 }
 
 
@@ -4380,6 +4401,16 @@ sp_instr_copen::execute(THD *thd, uint *nextp)
     sp_lex_keeper *lex_keeper= c->get_lex_keeper();
     res= lex_keeper->cursor_reset_lex_and_exec_core(thd, nextp, FALSE, this);
     /* TODO: Assert here that we either have an error or a cursor */
+
+    Query_arena *arena= lex_keeper->get_arena();
+    Item *to_free= (arena ? arena->free_list : 0);
+    if (to_free)
+    {
+      DBUG_PRINT("YYY", ("free from cursor arena %p %s",
+                         arena, arena->mem_root->name));
+      cleanup_items(to_free);
+    }
+
   }
   DBUG_RETURN(res);
 }

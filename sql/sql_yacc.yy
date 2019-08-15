@@ -515,7 +515,7 @@ bool sp_create_assignment_lex(THD *thd, const char *pos)
   if (thd->lex->sphead)
   {
     sp_lex_local *new_lex;
-    if (!(new_lex= new (thd->mem_root) sp_lex_set_var(thd, thd->lex)) ||
+    if (!(new_lex= new sp_lex_set_var(thd, thd->lex)) ||
         new_lex->main_select_push())
       return true;
     new_lex->sphead->m_tmp_query= pos;
