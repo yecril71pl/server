@@ -1004,7 +1004,9 @@ public:
 */
   sp_lex_cursor(THD *thd, const LEX *oldlex)
    :sp_lex_local(thd, oldlex)
-  { }
+  {
+    mem_root->name= "CURSOR lex";
+  }
   ~sp_lex_cursor() { }
   void cleanup_stmt() { }
   Query_arena *query_arena() { return this; }
@@ -1023,8 +1025,8 @@ public:
     if (validate())
       return true;
     sp_lex_in_use= true;
-    free_list= thd->free_list;
-    thd->free_list= NULL;
+    //free_list= thd->free_list;
+    //thd->free_list= NULL;
     return false;
   }
 };
