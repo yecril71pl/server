@@ -381,7 +381,7 @@ row_undo_mod_clust(
 		if (index->table->is_temporary()) {
 			mtr.set_log_mode(MTR_LOG_NO_REDO);
 			if (btr_cur_optimistic_delete(&pcur->btr_cur, 0,
-						      &mtr)) {
+						      &mtr, false, false)) {
 				goto mtr_commit_exit;
 			}
 			btr_pcur_commit_specify_mtr(pcur, &mtr);
@@ -393,7 +393,7 @@ row_undo_mod_clust(
 				goto mtr_commit_exit;
 			}
 			if (btr_cur_optimistic_delete(&pcur->btr_cur, 0,
-						      &mtr)) {
+						      &mtr, false, false)) {
 				goto mtr_commit_exit;
 			}
 			purge_sys.latch.rd_unlock();
@@ -429,7 +429,7 @@ row_undo_mod_clust(
 		completely inserted. Therefore, we are passing
 		rollback=false, just like purge does. */
 		btr_cur_pessimistic_delete(&err, FALSE, &pcur->btr_cur, 0,
-					   false, &mtr);
+					   false, &mtr, false, false);
 		ut_ad(err == DB_SUCCESS || err == DB_OUT_OF_FILE_SPACE);
 	} else if (!index->table->is_temporary() && node->new_trx_id) {
 		/* We rolled back a record so that it still exists.
@@ -643,7 +643,8 @@ row_undo_mod_del_mark_or_remove_sec_low(
 		}
 
 		if (modify_leaf) {
-			err = btr_cur_optimistic_delete(btr_cur, 0, &mtr)
+			err = btr_cur_optimistic_delete(btr_cur, 0, &mtr,
+			    false, false)
 				? DB_SUCCESS : DB_FAIL;
 		} else {
 			/* Passing rollback=false,
@@ -652,7 +653,7 @@ row_undo_mod_del_mark_or_remove_sec_low(
 			record that contains externally stored columns. */
 			ut_ad(!index->is_primary());
 			btr_cur_pessimistic_delete(&err, FALSE, btr_cur, 0,
-						   false, &mtr);
+						   false, &mtr, false, false);
 
 			/* The delete operation may fail if we have little
 			file space left: TODO: easiest to crash the database

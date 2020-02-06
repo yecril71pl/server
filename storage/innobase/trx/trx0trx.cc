@@ -47,6 +47,9 @@ Created 3/26/1996 Heikki Tuuri
 #include "trx0xa.h"
 #include "ut0pool.h"
 #include "ut0vec.h"
+#ifdef UNIV_DEBUG
+#include "hash0hash.h" // hash_create(), hash_table_free()
+#endif /* UNIV_DEBUG */
 
 #include <set>
 #include <new>
@@ -171,6 +174,9 @@ struct TrxFactory {
 
 		new(&trx->read_view) ReadView();
 
+		ut_d(new(&trx->locking_read_records)
+		    decltype(trx->locking_read_records)();)
+
 		trx->rw_trx_hash_pins = 0;
 		trx_init(trx);
 
@@ -238,6 +244,11 @@ struct TrxFactory {
 		trx->lock.table_locks.~lock_list();
 
 		trx->read_view.~ReadView();
+#ifdef UNIV_DEBUG
+		using locking_read_records_t =
+		  decltype(trx->locking_read_records);
+		trx->locking_read_records.~locking_read_records_t();
+#endif
 	}
 };
 
@@ -878,6 +889,26 @@ trx_rseg_t *trx_t::assign_temp_rseg()
 
 	return(rseg);
 }
+
+#ifdef UNIV_DEBUG
+bool trx_t::locking_read_is_active(page_id_t page_id, ulint heap_no)
+{
+  std::lock_guard<std::mutex> lock(locking_read_records_mutex);
+  return locking_read_records.count(rec_id_t{page_id, heap_no});
+}
+
+void trx_t::clear_locking_read_records()
+{
+  std::lock_guard<std::mutex> lock(locking_read_records_mutex);
+  locking_read_records.clear();
+}
+
+void trx_t::add_to_locking_read_records(page_id_t page_id, ulint heap_no)
+{
+  std::lock_guard<std::mutex> lock(locking_read_records_mutex);
+  locking_read_records.emplace(rec_id_t{page_id, heap_no});
+}
+#endif /* UNIV_DEBUG */
 
 /****************************************************************//**
 Starts a transaction. */

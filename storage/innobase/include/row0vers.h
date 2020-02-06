@@ -54,6 +54,13 @@ row_vers_impl_x_locked(
 	dict_index_t*	index,
 	const rec_offs*	offsets);
 
+trx_t*
+row_vers_impl_x_locked_2(
+	trx_t*		caller_trx,
+	const rec_t*	rec,
+	dict_index_t*	index,
+	const rec_offs*	offsets);
+
 /** Finds out if a version of the record, where the version >= the current
 purge view, should have ientry as its secondary index entry. We check
 if there is any not delete marked version of the record where the trx

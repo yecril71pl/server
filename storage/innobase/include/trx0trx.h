@@ -37,6 +37,10 @@ Created 3/26/1996 Heikki Tuuri
 #include "read0types.h"
 #include "ilist.h"
 
+#ifdef UNIV_DEBUG
+#include "buf0types.h" // page_id_t
+#include <unordered_set>
+#endif /* UNIV_DEBUG */
 #include <vector>
 
 // Forward declaration
@@ -1029,6 +1033,28 @@ private:
   /** Assign a rollback segment for modifying temporary tables.
   @return the assigned rollback segment */
   trx_rseg_t *assign_temp_rseg();
+#ifdef UNIV_DEBUG
+public:
+  struct rec_id_t
+  {
+    page_id_t page_id;
+    ulint heap_no;
+    bool operator==(const rec_id_t &t) const
+    {
+      return this->heap_no == t.heap_no && this->page_id == t.page_id;
+    }
+  };
+  struct rec_id_hash_t {
+    size_t operator()(const rec_id_t& t) const {
+      return ut_fold_ulint_pair(t.page_id.fold(), t.heap_no);
+    }
+  };
+  std::unordered_set<rec_id_t, rec_id_hash_t> locking_read_records;
+  std::mutex locking_read_records_mutex;
+  bool locking_read_is_active(page_id_t page_id, ulint heap_no);
+  void clear_locking_read_records();
+  void add_to_locking_read_records(page_id_t page_id, ulint heap_no);
+#endif /* UNIV_DEBUG */
 };
 
 /**

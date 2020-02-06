@@ -75,6 +75,8 @@ to que_run_threads: this is to allow canceling runaway queries */
 #define	SEL_EXHAUSTED	1
 #define SEL_RETRY	2
 
+enum gap_lock_direction { NONE, FORWARD, BACKWARD };
+
 /********************************************************************//**
 Returns TRUE if the user-defined column in a secondary index record
 is alphabetically the same as the corresponding BLOB column in the clustered
@@ -1320,7 +1322,13 @@ sel_set_rec_lock(
 	    && buf_pool.running_out()) {
 		return DB_LOCK_TABLE_FULL;
 	}
-
+#ifdef UNIV_DEBUG
+	if (!dict_index_is_spatial(index)
+	    && type == LOCK_ORDINARY
+	    && rec_get_deleted_flag(rec,dict_table_is_comp(index->table)))
+		trx->add_to_locking_read_records(block->page.id(),
+		    page_rec_get_heap_no(rec));
+#endif /* UNIV_DEBUG */
 	if (dict_index_is_clust(index)) {
 		err = lock_clust_rec_read_check_and_lock(
 			0, block, rec, index, offsets,
@@ -1342,7 +1350,6 @@ sel_set_rec_lock(
 				static_cast<lock_mode>(mode), type, thr);
 		}
 	}
-
 	return(err);
 }
 
@@ -1639,6 +1646,8 @@ row_sel(
 	rec_t*		rec;
 	rec_t*		old_vers;
 	rec_t*		clust_rec;
+	gap_lock_direction gl_dir = NONE;
+	btr_pcur_t	gap_lock_init_pcur;
 
 	/* The following flag becomes TRUE when we are doing a
 	consistent read from a non-clustered index and we must look
@@ -1802,9 +1811,16 @@ rec_loop:
 				}
 
 				lock_type = LOCK_REC_NOT_GAP;
-			} else {
+			} else
+				/* There is no need to do this for
+				delete-marked records as the gap will be
+				extended in both directions */
+				if (rec_get_deleted_flag(
+					    rec,
+					    dict_table_is_comp(plan->table)))
+				goto skip_lock;
+			else
 				lock_type = LOCK_ORDINARY;
-			}
 
 			err = sel_set_rec_lock(&plan->pcur,
 					       next_rec, index, offsets,
@@ -1868,20 +1884,54 @@ skip_lock:
 		} else {
 			lock_type = LOCK_ORDINARY;
 		}
+		if (gl_dir == NONE || node->asc
+		    || rec_get_deleted_flag(rec,
+					    dict_table_is_comp(plan->table))) {
+			err = sel_set_rec_lock(&plan->pcur, rec, index,
+					       offsets, node->row_lock_mode,
+					       lock_type, thr, &mtr);
 
-		err = sel_set_rec_lock(&plan->pcur,
-				       rec, index, offsets,
-				       node->row_lock_mode, lock_type,
-				       thr, &mtr);
-
-		switch (err) {
-		case DB_SUCCESS_LOCKED_REC:
-			err = DB_SUCCESS;
-			/* fall through */
-		case DB_SUCCESS:
-			break;
-		default:
-			goto lock_wait_or_error;
+			switch (err) {
+			case DB_SUCCESS_LOCKED_REC:
+				err = DB_SUCCESS;
+				/* fall through */
+			case DB_SUCCESS:
+				break;
+			default:
+				goto lock_wait_or_error;
+			}
+		}
+		if (lock_type != LOCK_REC_NOT_GAP
+		    && rec_get_deleted_flag(rec,
+					    dict_table_is_comp(plan->table))) {
+			if (gl_dir == NONE && cursor_just_opened
+			    && !dict_index_is_spatial(index)) {
+				if (!node->asc) {
+					gl_dir = BACKWARD;
+					node->asc = !node->asc;
+					btr_pcur_store_position(&(plan->pcur),
+								&mtr);
+					btr_pcur_copy_stored_position(
+						&gap_lock_init_pcur,
+						&(plan->pcur));
+				} else
+					gl_dir = FORWARD;
+			}
+			goto next_rec;
+		} else {
+			if (gl_dir == BACKWARD) {
+			change_gl_dir:
+				mtr.commit();
+				mtr.start();
+				btr_pcur_copy_stored_position(
+					&(plan->pcur), &gap_lock_init_pcur);
+				btr_pcur_restore_position(BTR_SEARCH_LEAF,
+							  &(plan->pcur), &mtr);
+				btr_pcur_free(&gap_lock_init_pcur);
+				gl_dir = FORWARD;
+				node->asc = !node->asc;
+				goto next_rec;
+			}
 		}
 	}
 
@@ -2142,7 +2192,8 @@ next_rec:
 	}
 
 	if (!moved) {
-
+		if (gl_dir == BACKWARD)
+			goto change_gl_dir;
 		goto table_exhausted;
 	}
 
@@ -4333,6 +4384,8 @@ row_search_mvcc(
 	ibool		table_lock_waited		= FALSE;
 	byte*		next_buf			= 0;
 	bool		spatial_search			= false;
+	gap_lock_direction gl_dir = NONE;
+	btr_pcur_t	gap_lock_init_pcur;
 
 	ut_ad(index && pcur && search_tuple);
 	ut_a(prebuilt->magic_n == ROW_PREBUILT_ALLOCATED);
@@ -4756,7 +4809,10 @@ wait_table_again:
 		if (!moves_up
 		    && set_also_gap_locks
 		    && !page_rec_is_supremum(rec)
-		    && !dict_index_is_spatial(index)) {
+		    && !dict_index_is_spatial(index)
+		    /* There is no need to do this for delete-marked records as
+		    the gap will be extended in both directions */
+		    && !rec_get_deleted_flag(rec, comp)) {
 
 			/* Try to place a gap lock on the next index record
 			to prevent phantoms in ORDER BY ... DESC queries */
@@ -5025,19 +5081,33 @@ wrong_offs:
 
 			if (set_also_gap_locks
 			    && !dict_index_is_spatial(index)) {
-				err = sel_set_rec_lock(
-					pcur,
-					rec, index, offsets,
-					prebuilt->select_lock_type, LOCK_GAP,
-					thr, &mtr);
+				bool deleted_flag
+					= rec_get_deleted_flag(rec, comp);
+				if (gl_dir == NONE || moves_up
+				    || deleted_flag) {
 
-				switch (err) {
-				case DB_SUCCESS_LOCKED_REC:
-				case DB_SUCCESS:
-					break;
-				default:
-					goto lock_wait_or_error;
+					err = sel_set_rec_lock(
+						pcur,
+						rec, index, offsets,
+						prebuilt->select_lock_type,
+						deleted_flag ? LOCK_ORDINARY
+						  : LOCK_GAP,
+						thr, &mtr);
+
+					switch (err) {
+					case DB_SUCCESS_LOCKED_REC:
+					case DB_SUCCESS:
+						break;
+					default:
+						goto lock_wait_or_error;
+					}
 				}
+				if (deleted_flag) {
+					if (gl_dir == NONE)
+						goto start_gl_dir;
+					goto next_rec;
+				} else if (gl_dir == BACKWARD)
+					goto change_gl_dir;
 			}
 
 			btr_pcur_store_position(pcur, &mtr);
@@ -5060,18 +5130,32 @@ wrong_offs:
 
 			if (set_also_gap_locks
 			    && !dict_index_is_spatial(index)) {
-				err = sel_set_rec_lock(
-					pcur,
-					rec, index, offsets,
-					prebuilt->select_lock_type, LOCK_GAP,
-					thr, &mtr);
+				bool deleted_flag
+					= rec_get_deleted_flag(rec, comp);
+				if (gl_dir == NONE || moves_up
+				    || deleted_flag) {
 
-				switch (err) {
-				case DB_SUCCESS_LOCKED_REC:
-				case DB_SUCCESS:
-					break;
-				default:
-					goto lock_wait_or_error;
+					err = sel_set_rec_lock(
+						pcur,
+						rec, index, offsets,
+						prebuilt->select_lock_type,
+						deleted_flag ? LOCK_ORDINARY
+						  : LOCK_GAP,
+						thr, &mtr);
+
+					switch (err) {
+					case DB_SUCCESS_LOCKED_REC:
+					case DB_SUCCESS:
+						break;
+					default:
+						goto lock_wait_or_error;
+					}
+					if (deleted_flag) {
+						if (gl_dir == NONE)
+							goto start_gl_dir;
+						goto next_rec;
+					} else if (gl_dir == BACKWARD)
+						goto change_gl_dir;
 				}
 			}
 
@@ -5177,112 +5261,119 @@ wrong_offs:
 		    && direction == 0
 		    && dtuple_get_n_fields_cmp(search_tuple)
 		    == dict_index_get_n_unique(index)
-		    && 0 == cmp_dtuple_rec(search_tuple, rec, offsets)) {
+		    && 0 == cmp_dtuple_rec(search_tuple, rec, offsets)
+		    && !rec_get_deleted_flag(rec, comp)) {
 no_gap_lock:
 			lock_type = LOCK_REC_NOT_GAP;
 		}
 
-		err = sel_set_rec_lock(pcur,
-				       rec, index, offsets,
-				       prebuilt->select_lock_type,
-				       lock_type, thr, &mtr);
+		if (gl_dir == NONE || moves_up
+		    || rec_get_deleted_flag(rec, comp)) {
 
-		switch (err) {
-			const rec_t*	old_vers;
-		case DB_SUCCESS_LOCKED_REC:
-			if (trx->isolation_level <= TRX_ISO_READ_COMMITTED) {
-				/* Note that a record of
-				prebuilt->index was locked. */
-				prebuilt->new_rec_locks = 1;
-			}
-			err = DB_SUCCESS;
-			/* fall through */
-		case DB_SUCCESS:
-			break;
-		case DB_LOCK_WAIT:
-			/* Lock wait for R-tree should already
-			be handled in sel_set_rtr_rec_lock() */
-			ut_ad(!dict_index_is_spatial(index));
-			/* Never unlock rows that were part of a conflict. */
-			prebuilt->new_rec_locks = 0;
-
-			if (UNIV_LIKELY(prebuilt->row_read_type
-					!= ROW_READ_TRY_SEMI_CONSISTENT)
-			    || unique_search
-			    || index != clust_index) {
-				if (!prebuilt->skip_locked) {
-					goto lock_wait_or_error;
-				}
-			} else {
-				/* The following call returns 'offsets'
-				associated with 'old_vers' */
-				row_sel_build_committed_vers_for_mysql(
-					clust_index, prebuilt, rec,
-					&offsets, &heap, &old_vers,
-					need_vrow ? &vrow : NULL, &mtr);
-			}
-
-			/* Check whether it was a deadlock or not, if not
-			a deadlock and the transaction had to wait then
-			release the lock it is waiting on. */
-
-			err = lock_trx_handle_wait(trx);
+			err = sel_set_rec_lock(pcur,
+					       rec, index, offsets,
+					       prebuilt->select_lock_type,
+					       lock_type, thr, &mtr);
 
 			switch (err) {
-			case DB_SUCCESS:
-				/* The lock was granted while we were
-				searching for the last committed version.
-				Do a normal locking read. */
-
-				offsets = rec_get_offsets(
-					rec, index, offsets,
-					index->n_core_fields,
-					ULINT_UNDEFINED, &heap);
-				goto locks_ok;
-			case DB_DEADLOCK:
-				goto lock_wait_or_error;
-			case DB_LOCK_WAIT:
-				ut_ad(!dict_index_is_spatial(index));
+				const rec_t*	old_vers;
+			case DB_SUCCESS_LOCKED_REC:
+				if (trx->isolation_level <=
+				    TRX_ISO_READ_COMMITTED) {
+					/* Note that a record of
+					prebuilt->index was locked. */
+					prebuilt->new_rec_locks = 1;
+				}
 				err = DB_SUCCESS;
-				if (prebuilt->skip_locked) {
+				/* fall through */
+			case DB_SUCCESS:
+				break;
+			case DB_LOCK_WAIT:
+				/* Lock wait for R-tree should already
+				be handled in sel_set_rtr_rec_lock() */
+				ut_ad(!dict_index_is_spatial(index));
+				/* Never unlock rows that were part of a
+				conflict. */
+				prebuilt->new_rec_locks = 0;
+
+				if (UNIV_LIKELY(prebuilt->row_read_type
+						!= ROW_READ_TRY_SEMI_CONSISTENT)
+				    || unique_search
+				    || index != clust_index) {
+					if (!prebuilt->skip_locked) {
+						goto lock_wait_or_error;
+					}
+				} else {
+					/* The following call returns 'offsets'
+					associated with 'old_vers' */
+					row_sel_build_committed_vers_for_mysql(
+						clust_index, prebuilt, rec,
+						&offsets, &heap, &old_vers,
+						need_vrow ? &vrow : NULL, &mtr);
+				}
+
+				/* Check whether it was a deadlock or not, if
+				not a deadlock and the transaction had to wait
+				then release the lock it is waiting on. */
+
+				err = lock_trx_handle_wait(trx);
+
+				switch (err) {
+				case DB_SUCCESS:
+					/* The lock was granted while we were
+					searching for the last committed
+					version. Do a normal locking read. */
+
+					offsets = rec_get_offsets(
+						rec, index, offsets,
+						index->n_core_fields,
+						ULINT_UNDEFINED, &heap);
+					goto locks_ok;
+				case DB_DEADLOCK:
+					goto lock_wait_or_error;
+				case DB_LOCK_WAIT:
+					ut_ad(!dict_index_is_spatial(index));
+					err = DB_SUCCESS;
+					if (prebuilt->skip_locked) {
+						goto next_rec;
+					}
+					break;
+				case DB_LOCK_WAIT_TIMEOUT:
+					if (prebuilt->skip_locked) {
+						err = DB_SUCCESS;
+						goto next_rec;
+					}
+					/* fall through */
+				default:
+					ut_error;
+				}
+
+				if (old_vers == NULL) {
+					/* The row was not yet committed */
+
 					goto next_rec;
 				}
+
+				did_semi_consistent_read = true;
+				rec = old_vers;
 				break;
-		        case DB_LOCK_WAIT_TIMEOUT:
+			case DB_RECORD_NOT_FOUND:
+				if (dict_index_is_spatial(index)) {
+					goto next_rec;
+				} else {
+					goto lock_wait_or_error;
+				}
+				break;
+			case DB_LOCK_WAIT_TIMEOUT:
 				if (prebuilt->skip_locked) {
 					err = DB_SUCCESS;
 					goto next_rec;
 				}
 				/* fall through */
 			default:
-				ut_error;
-			}
 
-			if (old_vers == NULL) {
-				/* The row was not yet committed */
-
-				goto next_rec;
-			}
-
-			did_semi_consistent_read = true;
-			rec = old_vers;
-			break;
-		case DB_RECORD_NOT_FOUND:
-			if (dict_index_is_spatial(index)) {
-				goto next_rec;
-			} else {
 				goto lock_wait_or_error;
 			}
-			break;
-		case DB_LOCK_WAIT_TIMEOUT:
-			if (prebuilt->skip_locked) {
-				err = DB_SUCCESS;
-				goto next_rec;
-			}
-			/* fall through */
-		default:
-
-			goto lock_wait_or_error;
 		}
 	} else {
 		/* This is a non-locking consistent read: if necessary, fetch
@@ -5383,30 +5474,37 @@ locks_ok_del_marked:
 		ut_ad(index != clust_index
 		      || row_get_rec_trx_id(rec, index, offsets));
 
-		/* The record is delete-marked: we can skip it */
-
-		/* This is an optimization to skip setting the next key lock
-		on the record that follows this delete-marked record. This
-		optimization works because of the unique search criteria
-		which precludes the presence of a range lock between this
-		delete marked record and the record following it.
-
-		For now this is applicable only to clustered indexes while
-		doing a unique search except for HANDLER queries because
-		HANDLER allows NEXT and PREV even in unique search on
-		clustered index. There is scope for further optimization
-		applicable to unique secondary indexes. Current behaviour is
-		to widen the scope of a lock on an already delete marked record
-		if the same record is deleted twice by the same transaction */
-		if (index == clust_index && unique_search
-		    && !prebuilt->used_in_HANDLER) {
-
-			err = DB_RECORD_NOT_FOUND;
-
-			goto normal_return;
+		if (set_also_gap_locks
+		    && !(trx->isolation_level <= TRX_ISO_READ_COMMITTED)
+		    && prebuilt->select_lock_type != LOCK_NONE
+		    && !dict_index_is_spatial(index) && gl_dir == NONE) {
+		start_gl_dir:
+			if (!moves_up) {
+				gl_dir = BACKWARD;
+				moves_up = !moves_up;
+				btr_pcur_store_position(pcur, &mtr);
+				btr_pcur_copy_stored_position(
+					&gap_lock_init_pcur, pcur);
+			} else
+				gl_dir = FORWARD;
 		}
 
 		goto next_rec;
+	} else {
+		if (gl_dir == BACKWARD) {
+		change_gl_dir:
+			mtr.commit();
+			mtr.start();
+			btr_pcur_copy_stored_position(pcur,
+						      &gap_lock_init_pcur);
+			gl_dir = FORWARD;
+			moves_up = !moves_up;
+			sel_restore_position_for_mysql(
+				&same_user_rec, BTR_SEARCH_LEAF, pcur,
+				moves_up, &mtr);
+			btr_pcur_free(&gap_lock_init_pcur);
+			goto next_rec;
+		}
 	}
 
 	/* Check if the record matches the index condition. */
@@ -5798,6 +5896,9 @@ next_rec:
 	}
 
 not_moved:
+	if (gl_dir == BACKWARD)
+		goto change_gl_dir;
+
 	if (!spatial_search) {
 		btr_pcur_store_position(pcur, &mtr);
 	}
@@ -5930,6 +6031,8 @@ func_exit:
 		}
 	}
 
+	ut_d(if (err == DB_SUCCESS)
+		trx->clear_locking_read_records());
 	DEBUG_SYNC_C("innodb_row_search_for_mysql_exit");
 
 	DBUG_RETURN(err);

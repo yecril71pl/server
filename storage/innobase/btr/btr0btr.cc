@@ -2672,7 +2672,7 @@ btr_insert_into_right_sibling(
 
 	compressed = btr_cur_pessimistic_delete(
 		&err, TRUE, &next_father_cursor,
-		BTR_CREATE_FLAG, false, mtr);
+		BTR_CREATE_FLAG, false, mtr, false, true);
 
 	ut_a(err == DB_SUCCESS);
 
@@ -3727,7 +3727,8 @@ retry:
 			compressed = btr_cur_pessimistic_delete(&err, TRUE,
 								&cursor2,
 								BTR_CREATE_FLAG,
-								false, mtr);
+								false, mtr,
+								false, true);
 			ut_a(err == DB_SUCCESS);
 
 			if (!compressed) {

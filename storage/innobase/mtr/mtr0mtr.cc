@@ -923,6 +923,24 @@ struct FindBlockX
   }
 };
 
+/** Find out whether a block with page_id was not X-latched by the
+ mini-transaction */
+struct FindPageIdX
+{
+  page_id_t page_id;
+
+  FindPageIdX(page_id_t page_id): page_id(page_id) {}
+
+  /** @return whether the block was not found x-latched */
+  bool operator()(const mtr_memo_slot_t *slot) const
+  {
+    return slot->type != MTR_MEMO_PAGE_X_FIX ||
+           !slot->object ||
+           ((buf_block_t *) slot->object)->page.id() != page_id;
+  }
+};
+
+
 #ifdef UNIV_DEBUG
 /** Assert that the block is not present in the mini-transaction */
 struct FindNoBlock
@@ -951,6 +969,13 @@ bool mtr_t::have_x_latch(const buf_block_t &block) const
   }
   ut_ad(block.lock.have_x());
   return true;
+}
+
+/** Check if we are holding a block latch in exclusive mode
+@param page_id  page id to search for */
+bool mtr_t::have_x_latch(page_id_t page_id) const
+{
+  return !m_memo.for_each_block(CIterate<FindPageIdX>(FindPageIdX(page_id)));
 }
 
 /** Check if we are holding exclusive tablespace latch

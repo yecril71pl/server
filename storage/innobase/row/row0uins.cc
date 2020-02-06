@@ -223,7 +223,8 @@ restart:
 		}
 	}
 
-	if (btr_cur_optimistic_delete(&node->pcur.btr_cur, 0, &mtr)) {
+	if (btr_cur_optimistic_delete(&node->pcur.btr_cur, 0, &mtr, false,
+	      false)) {
 		err = DB_SUCCESS;
 		goto func_exit;
 	}
@@ -244,7 +245,7 @@ retry:
 	ut_a(success);
 
 	btr_cur_pessimistic_delete(&err, FALSE, &node->pcur.btr_cur, 0, true,
-				   &mtr);
+				   &mtr, false, false);
 
 	/* The delete operation may fail if we have little
 	file space left: TODO: easiest to crash the database
@@ -342,7 +343,8 @@ row_undo_ins_remove_sec_low(
 		btr_cur_t* btr_cur = btr_pcur_get_btr_cur(&pcur);
 
 		if (modify_leaf) {
-			err = btr_cur_optimistic_delete(btr_cur, 0, &mtr)
+			err = btr_cur_optimistic_delete(btr_cur, 0, &mtr,
+			    false, false)
 				? DB_SUCCESS : DB_FAIL;
 		} else {
 			/* Passing rollback=false here, because we are
@@ -350,7 +352,7 @@ row_undo_ins_remove_sec_low(
 			only matters when deleting a record that contains
 			externally stored columns. */
 			btr_cur_pessimistic_delete(&err, FALSE, btr_cur, 0,
-						   false, &mtr);
+						   false, &mtr, false, false);
 		}
 	}
 

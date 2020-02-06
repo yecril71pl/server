@@ -130,7 +130,7 @@ row_vers_impl_x_locked_low(
 
 	trx_t*	trx;
 
-	if (trx_id == caller_trx->id) {
+	if (caller_trx && trx_id == caller_trx->id) {
 		trx = caller_trx;
 		trx->reference();
 	} else {
@@ -375,6 +375,305 @@ result_check:
 	mem_heap_free(heap);
 	DBUG_RETURN(trx);
 }
+
+UNIV_INLINE
+trx_t*
+row_vers_impl_x_locked_low_2(
+	trx_t*		caller_trx,
+	const rec_t*	clust_rec,
+	dict_index_t*	clust_index,
+	const rec_t*	rec,
+	dict_index_t*	index,
+	const rec_offs*	offsets,
+	mtr_t*		mtr)
+{
+  return nullptr;
+	trx_id_t	trx_id;
+	rec_t*		prev_version = NULL;
+	rec_offs	clust_offsets_[REC_OFFS_NORMAL_SIZE];
+	rec_offs*	clust_offsets;
+	mem_heap_t*	heap;
+	dtuple_t*	ientry = NULL;
+	mem_heap_t*	v_heap = NULL;
+	dtuple_t*	cur_vrow = NULL;
+
+	rec_offs_init(clust_offsets_);
+
+	DBUG_ENTER("row_vers_impl_x_locked_low");
+
+	ut_ad(rec_offs_validate(rec, index, offsets));
+
+	if (ulint trx_id_offset = clust_index->trx_id_offset) {
+		trx_id = mach_read_from_6(clust_rec + trx_id_offset);
+		if (trx_id == 0) {
+			/* The transaction history was already purged. */
+			DBUG_RETURN(0);
+		}
+	}
+
+	heap = mem_heap_create(1024);
+
+	clust_offsets = rec_get_offsets(clust_rec, clust_index, clust_offsets_,
+					clust_index->n_core_fields,
+					ULINT_UNDEFINED, &heap);
+
+	trx_id = row_get_rec_trx_id(clust_rec, clust_index, clust_offsets);
+	if (trx_id == 0) {
+		/* The transaction history was already purged. */
+		mem_heap_free(heap);
+		DBUG_RETURN(0);
+	}
+
+	ut_ad(!clust_index->table->is_temporary());
+
+	trx_t*	trx;
+
+	if (caller_trx && trx_id == caller_trx->id) {
+		trx = caller_trx;
+		trx->reference();
+	} else {
+		trx = trx_sys.find(caller_trx, trx_id);
+		if (trx == 0) {
+			/* The transaction that modified or inserted
+			clust_rec is no longer active, or it is
+			corrupt: no implicit lock on rec */
+			lock_check_trx_id_sanity(trx_id, clust_rec,
+						 clust_index, clust_offsets);
+			mem_heap_free(heap);
+			DBUG_RETURN(0);
+		}
+	}
+
+	const ulint comp = page_rec_is_comp(rec);
+	ut_ad(index->table == clust_index->table);
+	ut_ad(!!comp == dict_table_is_comp(index->table));
+	ut_ad(!comp == !page_rec_is_comp(clust_rec));
+
+	const ulint rec_del = rec_get_deleted_flag(rec, comp);
+
+	if (dict_index_has_virtual(index)) {
+		ulint	est_size = DTUPLE_EST_ALLOC(index->n_fields);
+
+		/* Allocate the dtuple for virtual columns extracted from undo
+		log with its own heap, so to avoid it being freed as we
+		iterating in the version loop below. */
+		v_heap = mem_heap_create(est_size);
+		ientry = row_rec_to_index_entry(rec, index, offsets, v_heap);
+	}
+
+	/* We look up if some earlier version, which was modified by
+	the trx_id transaction, of the clustered index record would
+	require rec to be in a different state (delete marked or
+	unmarked, or have different field values, or not existing). If
+	there is such a version, then rec was modified by the trx_id
+	transaction, and it has an implicit x-lock on rec. Note that
+	if clust_rec itself would require rec to be in a different
+	state, then the trx_id transaction has not yet had time to
+	modify rec, and does not necessarily have an implicit x-lock
+	on rec. */
+
+	for (const rec_t* version = clust_rec;; version = prev_version) {
+		row_ext_t*	ext;
+		dtuple_t*	row;
+		dtuple_t*	entry;
+		ulint		vers_del;
+		trx_id_t	prev_trx_id;
+		mem_heap_t*	old_heap = heap;
+		dtuple_t*	vrow = NULL;
+
+		/* We keep the semaphore in mtr on the clust_rec page, so
+		that no other transaction can update it and get an
+		implicit x-lock on rec until mtr_commit(mtr). */
+
+		heap = mem_heap_create(1024);
+
+		trx_undo_prev_version_build(
+			clust_rec, mtr, version, clust_index, clust_offsets,
+			heap, &prev_version, NULL,
+			dict_index_has_virtual(index) ? &vrow : NULL, 0);
+
+		ut_d(trx->mutex_lock());
+		const bool committed = trx_state_eq(
+			trx, TRX_STATE_COMMITTED_IN_MEMORY);
+		ut_d(trx->mutex_unlock());
+
+		/* The oldest visible clustered index version must not be
+		delete-marked, because we never start a transaction by
+		inserting a delete-marked record. */
+		ut_ad(committed || prev_version
+		      || !rec_get_deleted_flag(version, comp));
+
+		/* Free version and clust_offsets. */
+		mem_heap_free(old_heap);
+
+		if (committed) {
+			goto not_locked;
+		}
+
+		if (prev_version == NULL) {
+
+			/* We reached the oldest visible version without
+			finding an older version of clust_rec that would
+			match the secondary index record.  If the secondary
+			index record is not delete marked, then clust_rec
+			is considered the correct match of the secondary
+			index record and hence holds the implicit lock. */
+
+			if (rec_del) {
+				/* The secondary index record is del marked.
+				So, the implicit lock holder of clust_rec
+				did not modify the secondary index record yet,
+				and is not holding an implicit lock on it.
+
+				This assumes that whenever a row is inserted
+				or updated, the leaf page record always is
+				created with a clear delete-mark flag.
+				(We never insert a delete-marked record.) */
+not_locked:
+				trx->release_reference();
+				trx = 0;
+			}
+
+			break;
+		}
+
+		clust_offsets = rec_get_offsets(
+			prev_version, clust_index, clust_offsets_,
+			clust_index->n_core_fields,
+			ULINT_UNDEFINED, &heap);
+
+		vers_del = rec_get_deleted_flag(prev_version, comp);
+
+		prev_trx_id = row_get_rec_trx_id(prev_version, clust_index,
+						 clust_offsets);
+
+		/* The stack of versions is locked by mtr.  Thus, it
+		is safe to fetch the prefixes for externally stored
+		columns. */
+
+		row = row_build(ROW_COPY_POINTERS, clust_index, prev_version,
+				clust_offsets,
+				NULL, NULL, NULL, &ext, heap);
+
+		if (dict_index_has_virtual(index)) {
+			if (vrow) {
+				/* Keep the virtual row info for the next
+				version */
+				cur_vrow = dtuple_copy(vrow, v_heap);
+				dtuple_dup_v_fld(cur_vrow, v_heap);
+			}
+
+			if (!cur_vrow) {
+				/* Build index entry out of row */
+				entry = row_build_index_entry(row, ext, index,
+							      heap);
+
+				/* entry could only be NULL (the
+				clustered index record could contain
+				BLOB pointers that are NULL) if we
+				were accessing a freshly inserted
+				record before it was fully inserted.
+				prev_version cannot possibly be such
+				an incomplete record, because its
+				transaction would have to be committed
+				in order for later versions of the
+				record to be able to exist. */
+				ut_ad(entry);
+
+				/* If the indexed virtual columns has changed,
+				there must be log record to generate vrow.
+				Otherwise, it is not changed, so no need
+				to compare */
+				if (!row_vers_non_virtual_fields_equal(
+					    index,
+					    ientry->fields, entry->fields)) {
+					if (rec_del != vers_del) {
+						break;
+					}
+				} else if (!rec_del) {
+					break;
+				}
+
+				goto result_check;
+			} else {
+				ut_ad(row->n_v_fields == cur_vrow->n_v_fields);
+				dtuple_copy_v_fields(row, cur_vrow);
+			}
+		}
+
+		entry = row_build_index_entry(row, ext, index, heap);
+
+		/* entry could only be NULL (the clustered index
+		record could contain BLOB pointers that are NULL) if
+		we were accessing a freshly inserted record before it
+		was fully inserted.  prev_version cannot possibly be
+		such an incomplete record, because its transaction
+		would have to be committed in order for later versions
+		of the record to be able to exist. */
+		ut_ad(entry);
+
+		/* If we get here, we know that the trx_id transaction
+		modified prev_version. Let us check if prev_version
+		would require rec to be in a different state. */
+
+		/* The previous version of clust_rec must be
+		accessible, because clust_rec was not a fresh insert.
+		There is no guarantee that the transaction is still
+		active. */
+
+		/* We check if entry and rec are identified in the alphabetical
+		ordering */
+		if (0 == cmp_dtuple_rec(entry, rec, offsets)) {
+			/* The delete marks of rec and prev_version should be
+			equal for rec to be in the state required by
+			prev_version */
+
+			if (rec_del != vers_del) {
+
+				break;
+			}
+
+			/* It is possible that the row was updated so that the
+			secondary index record remained the same in
+			alphabetical ordering, but the field values changed
+			still. For example, 'abc' -> 'ABC'. Check also that. */
+
+			dtuple_set_types_binary(
+				entry, dtuple_get_n_fields(entry));
+
+			if (0 != cmp_dtuple_rec(entry, rec, offsets)) {
+
+				break;
+			}
+
+		} else if (!rec_del) {
+			/* The delete mark should be set in rec for it to be
+			in the state required by prev_version */
+
+			break;
+		}
+
+result_check:
+		if (trx->id != prev_trx_id) {
+			/* prev_version was the first version modified by
+			the trx_id transaction: no implicit x-lock */
+			goto not_locked;
+		}
+	}
+
+	if (trx) {
+		DBUG_PRINT("info", ("Implicit lock is held by trx:" TRX_ID_FMT,
+				    trx_id));
+	}
+
+	if (v_heap != NULL) {
+		mem_heap_free(v_heap);
+	}
+
+	mem_heap_free(heap);
+	DBUG_RETURN(trx);
+}
+
 
 /** Determine if an active transaction has inserted or modified a secondary
 index record.

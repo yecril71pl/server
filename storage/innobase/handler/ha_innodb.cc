@@ -883,6 +883,44 @@ static MYSQL_THDVAR_STR(tmpdir,
   "Directory for temporary non-tablespace files.",
   innodb_tmpdir_validate, NULL, NULL);
 
+#ifdef UNIV_DEBUG
+/** Validate passed-in "value" is a valid directory name.
+This function is registered as a callback with MySQL.
+@param[in,out]	thd	thread handle
+@param[in]	var	pointer to system variable
+@param[out]	save	immediate result for update
+@param[in]	value	incoming string
+@return 0 for valid name */
+static int innodb_intern_query_validate(THD *thd,
+                                              struct st_mysql_sys_var *var,
+                                              void *save,
+                                              struct st_mysql_value *value)
+{
+  char buff[1024];
+  int len= sizeof(buff);
+  ut_ad(save != NULL);
+  ut_ad(value != NULL);
+  const char *query= value->val_str(value, buff, &len);
+  if (!query)
+    return 1;
+  trx_t *trx= trx_create();
+  row_mysql_lock_data_dictionary(trx);
+  pars_info_t *info= pars_info_create();
+  dberr_t err= que_eval_sql(info, query, FALSE, trx);
+  row_mysql_unlock_data_dictionary(trx);
+  DEBUG_SYNC_C("before_debug_intern_query_debug");
+  trx_commit_for_mysql(trx);
+  trx->free();
+  *static_cast<const char **>(save)= query;
+  return (err != DB_SUCCESS);
+}
+
+static MYSQL_THDVAR_STR(
+    intern_query, PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_MEMALLOC,
+    "Debug-only variable to test internal innodb query parser.",
+    innodb_intern_query_validate, NULL, NULL);
+#endif /* UNIV_DEBUG */
+
 static SHOW_VAR innodb_status_variables[]= {
 #ifdef BTR_CUR_HASH_ADAPT
   {"adaptive_hash_hash_searches", &export_vars.innodb_ahi_hit, SHOW_SIZE_T},
@@ -19526,6 +19564,9 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(table_locks),
   MYSQL_SYSVAR(prefix_index_cluster_optimization),
   MYSQL_SYSVAR(tmpdir),
+#ifdef UNIV_DEBUG
+  MYSQL_SYSVAR(intern_query),
+#endif /* UNIV_DEBUG */
   MYSQL_SYSVAR(autoinc_lock_mode),
   MYSQL_SYSVAR(version),
   MYSQL_SYSVAR(use_native_aio),

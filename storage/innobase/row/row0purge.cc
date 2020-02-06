@@ -227,13 +227,13 @@ close_and_exit:
 
 	if (mode == BTR_MODIFY_LEAF) {
 		success = btr_cur_optimistic_delete(
-			btr_pcur_get_btr_cur(&node->pcur), 0, &mtr);
+			btr_pcur_get_btr_cur(&node->pcur), 0, &mtr, true, true);
 	} else {
 		dberr_t	err;
 		ut_ad(mode == (BTR_MODIFY_TREE | BTR_LATCH_FOR_DELETE));
 		btr_cur_pessimistic_delete(
 			&err, FALSE, btr_pcur_get_btr_cur(&node->pcur), 0,
-			false, &mtr);
+			false, &mtr, true, true);
 
 		switch (err) {
 		case DB_SUCCESS:
@@ -451,7 +451,7 @@ row_purge_remove_sec_if_poss_tree(
 
 		btr_cur_pessimistic_delete(&err, FALSE,
 					   btr_pcur_get_btr_cur(&pcur),
-					   0, false, &mtr);
+					   0, false, &mtr, true, true);
 		switch (UNIV_EXPECT(err, DB_SUCCESS)) {
 		case DB_SUCCESS:
 			break;
@@ -604,8 +604,8 @@ row_purge_remove_sec_if_poss_leaf(
 					return(success);
 				}
 			}
-
-			if (!btr_cur_optimistic_delete(btr_cur, 0, &mtr)) {
+			if (!btr_cur_optimistic_delete(btr_cur, 0, &mtr, true,
+			      true)) {
 
 				/* The index entry could not be deleted. */
 				success = false;
