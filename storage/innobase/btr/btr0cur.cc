@@ -2979,15 +2979,82 @@ btr_cur_ins_lock_and_undo(
 				trx->wsrep_UK_scan= true;
 			}
 #endif /* WITH_WSREP */
-			err = lock_rec_insert_check_and_lock(
-				flags, rec, btr_cur_get_block(cursor),
-				index, thr, mtr, inherit);
+                        buf_block_t *old_block= btr_cur_get_block(cursor);
+                        ut_ad(old_block);
+                        rec_t *cur_rec= rec;
+                        buf_block_t *cur_block= old_block;
+                        ibool comp= dict_table_is_comp(index->table);
+                        bool first_rec= true;
+                        ulint latch_mode;
+                        while ((err= lock_rec_insert_check_and_lock(
+                                    flags, cur_rec, cur_block, index, thr, mtr,
+                                    inherit, first_rec)) == DB_SUCCESS ||
+                               err == DB_SUCCESS_LOCKED_REC)
+                        {
+                          first_rec= false;
+                          const rec_t *next_rec=
+                              page_rec_get_next_const(cur_rec);
+                          if (!page_rec_is_supremum(next_rec) &&
+                              !rec_get_deleted_flag(next_rec, comp))
+                            break;
+                        get_next_rec:
+                          if (!page_cur_is_after_last(
+                                  btr_cur_get_page_cur(cursor)))
+                            page_cur_move_to_next(
+                                btr_cur_get_page_cur(cursor));
+                          else
+                          {
+                            ulint next_page_no=
+                                btr_page_get_next(btr_cur_get_page(cursor));
+                            if (next_page_no == FIL_NULL)
+                              break;
+                            buf_block_t *block= btr_cur_get_block(cursor);
+                            latch_mode=
+                                mtr->have_x_latch(page_id_t(
+                                    block->page.id.space(), next_page_no))
+                                    ? BTR_MODIFY_LEAF
+                                    : BTR_SEARCH_LEAF;
+                            block= btr_block_get(
+                                page_id_t(block->page.id.space(),
+                                          next_page_no),
+                                block->page.size, latch_mode, index, mtr);
+                            if (cur_block != old_block &&
+                                latch_mode == BTR_SEARCH_LEAF)
+                              btr_leaf_page_release(btr_cur_get_block(cursor),
+                                                    latch_mode, mtr);
+                            page_cur_set_before_first(
+                                block, btr_cur_get_page_cur(cursor));
+                            page_cur_move_to_next(
+                                btr_cur_get_page_cur(cursor));
+
+                            ut_ad(!page_cur_is_after_last(
+                                btr_cur_get_page_cur(cursor)));
+                          }
+
+                          cur_rec= btr_cur_get_rec(cursor);
+                          cur_block= btr_cur_get_block(cursor);
+                          if (page_rec_is_supremum(cur_rec))
+                            goto get_next_rec;
+                        }
+                        /* Restore cursor position and release last latched
+                         block if necessary */
+                        page_cur_t *page_cur= btr_cur_get_page_cur(cursor);
+                        ut_ad(page_cur);
+                        if (cur_block != old_block)
+                        {
+                          ut_ad(latch_mode == BTR_MODIFY_LEAF ||
+                                latch_mode == BTR_SEARCH_LEAF);
+                          if (latch_mode == BTR_SEARCH_LEAF)
+                            btr_leaf_page_release(btr_cur_get_block(cursor),
+                                                  latch_mode, mtr);
+                          page_cur->block= old_block;
+                        }
+                        page_cur->rec= rec;
 #ifdef WITH_WSREP
 			trx->wsrep_UK_scan= false;
 #endif /* WITH_WSREP */
 		}
 	}
-
 	if (err != DB_SUCCESS
 	    || !(~flags | (BTR_NO_UNDO_LOG_FLAG | BTR_KEEP_SYS_FLAG))
 	    || !dict_index_is_clust(index) || dict_index_is_ibuf(index)) {
@@ -5133,25 +5200,19 @@ btr_cur_compress_if_useful(
 	       && btr_compress(cursor, adjust, mtr));
 }
 
-/*******************************************************//**
-Removes the record on which the tree cursor is positioned on a leaf page.
-It is assumed that the mtr has an x-latch on the page where the cursor is
-positioned, but no latch on the whole tree.
+/** Removes the record on which the tree cursor is positioned. It is assumed
+that the mtr has an x-latch on the page where the cursor is positioned,
+but no latch on the whole tree.
+@param cursor cursor on the record to delete; cursor stays valid: if deletion
+succeeds, on function exit it points to the successor of the deleted record
+@param flags BTR_CREATE_FLAG or 0
+@param mtr if this function returns TRUE on a leaf page of a
+secondary index, the mtr must be committed before latching any further pages
+@param from_purge true if the record is deleted by purge process, false
+otherwise
 @return TRUE if success, i.e., the page did not become too empty */
-ibool
-btr_cur_optimistic_delete_func(
-/*===========================*/
-	btr_cur_t*	cursor,	/*!< in: cursor on leaf page, on the record to
-				delete; cursor stays valid: if deletion
-				succeeds, on function exit it points to the
-				successor of the deleted record */
-#ifdef UNIV_DEBUG
-	ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
-#endif /* UNIV_DEBUG */
-	mtr_t*		mtr)	/*!< in: mtr; if this function returns
-				TRUE on a leaf page of a secondary
-				index, the mtr must be committed
-				before latching any further pages */
+ibool btr_cur_optimistic_delete(btr_cur_t *cursor, ulint flags, mtr_t *mtr,
+                                bool from_purge, bool convert_lock_to_gap)
 {
 	buf_block_t*	block;
 	rec_t*		rec;
@@ -5190,7 +5251,7 @@ btr_cur_optimistic_delete_func(
 		page_t*		page	= buf_block_get_frame(block);
 		page_zip_des_t*	page_zip= buf_block_get_page_zip(block);
 
-		lock_update_delete(block, rec);
+		lock_update_delete(block, rec, from_purge, convert_lock_to_gap);
 
 		btr_search_update_hash_on_delete(cursor);
 
@@ -5239,34 +5300,30 @@ btr_cur_optimistic_delete_func(
 	return(no_compress_needed);
 }
 
-/*************************************************************//**
-Removes the record on which the tree cursor is positioned. Tries
+/** Removes the record on which the tree cursor is positioned. Tries
 to compress the page if its fillfactor drops below a threshold
 or if it is the only page on the level. It is assumed that mtr holds
 an x-latch on the tree and on the cursor page. To avoid deadlocks,
 mtr must also own x-latches to brothers of page, if those brothers
 exist.
-@return TRUE if compression occurred and FALSE if not or something
-wrong. */
-ibool
-btr_cur_pessimistic_delete(
-/*=======================*/
-	dberr_t*	err,	/*!< out: DB_SUCCESS or DB_OUT_OF_FILE_SPACE;
-				the latter may occur because we may have
-				to update node pointers on upper levels,
-				and in the case of variable length keys
-				these may actually grow in size */
-	ibool		has_reserved_extents, /*!< in: TRUE if the
-				caller has already reserved enough free
-				extents so that he knows that the operation
-				will succeed */
-	btr_cur_t*	cursor,	/*!< in: cursor on the record to delete;
-				if compression does not occur, the cursor
-				stays valid: it points to successor of
-				deleted record on function exit */
-	ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
-	bool		rollback,/*!< in: performing rollback? */
-	mtr_t*		mtr)	/*!< in: mtr */
+@param err [out]  DB_SUCCESS or DB_OUT_OF_FILE_SPACE; the latter may occur
+because we may have to update node pointers on upper levels, and in the case
+of variable length keys these may actually grow in size
+@param has_reserved_extents  TRUE if the caller has already reserved enough
+free extents so that he knows that the operation will succeed
+@param cursor cursor on the record to delete; if compression does not occur,
+the cursor stays valid: it points to successor of deleted record on function
+exit
+@param flags BTR_CREATE_FLAG or 0
+@param rollback performing rollback?
+@param mtr mtr
+@param from_purge true if the record is deleted by purge process, false
+otherwise
+@return TRUE if compression occurred */
+ibool btr_cur_pessimistic_delete(dberr_t *err, ibool has_reserved_extents,
+                                 btr_cur_t *cursor, ulint flags, bool rollback,
+                                 mtr_t *mtr, bool from_purge,
+                                 bool convert_lock_to_gap)
 {
 	buf_block_t*	block;
 	page_t*		page;
@@ -5342,7 +5399,8 @@ btr_cur_pessimistic_delete(
 		ut_ad(!(rec_get_info_bits(rec, page_rec_is_comp(rec))
 			& REC_INFO_MIN_REC_FLAG));
 		if (flags == 0) {
-			lock_update_delete(block, rec);
+			lock_update_delete(block, rec, from_purge,
+                            convert_lock_to_gap);
 		}
 	}
 
@@ -5497,7 +5555,7 @@ void btr_cur_node_ptr_delete(btr_cur_t* parent, mtr_t* mtr)
 	dberr_t err;
 	ibool compressed = btr_cur_pessimistic_delete(&err, TRUE, parent,
 						      BTR_CREATE_FLAG, false,
-						      mtr);
+						      mtr, false, true);
 	ut_a(err == DB_SUCCESS);
 	if (!compressed) {
 		btr_cur_compress_if_useful(parent, FALSE, mtr);

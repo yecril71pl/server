@@ -2539,7 +2539,6 @@ Makes a record to inherit the locks (except LOCK_INSERT_INTENTION type)
 of another record as gap type locks, but does not reset the lock bits of
 the other record. Also waiting lock requests on rec are inherited as
 GRANTED gap locks. */
-static
 void
 lock_rec_inherit_to_gap(
 /*====================*/
@@ -2551,8 +2550,9 @@ lock_rec_inherit_to_gap(
 						this record */
 	ulint			heir_heap_no,	/*!< in: heap_no of the
 						inheriting record */
-	ulint			heap_no)	/*!< in: heap_no of the
+	ulint			heap_no,	/*!< in: heap_no of the
 						donating record */
+	bool convert_to_gap = true)
 {
 	lock_t*	lock;
 
@@ -2567,13 +2567,14 @@ lock_rec_inherit_to_gap(
 	for (lock = lock_rec_get_first(lock_sys->rec_hash, block, heap_no);
 	     lock != NULL;
 	     lock = lock_rec_get_next(heap_no, lock)) {
-
 		if (!lock_rec_get_insert_intention(lock)
 		    && !((srv_locks_unsafe_for_binlog
 			  || lock->trx->isolation_level
 			  <= TRX_ISO_READ_COMMITTED)
 			 && lock_get_mode(lock) ==
-			 (lock->trx->duplicates ? LOCK_S : LOCK_X))) {
+			 (lock->trx->duplicates ? LOCK_S : LOCK_X))
+		    && (!(lock->type_mode & LOCK_REC_NOT_GAP)
+		      || convert_to_gap)) {
 			lock_rec_add_to_queue(
 				LOCK_REC | LOCK_GAP | lock_get_mode(lock),
 				heir_block, heir_heap_no, lock->index,
@@ -3465,13 +3466,48 @@ lock_update_insert(
 		block, receiver_heap_no, donator_heap_no);
 }
 
-/*************************************************************//**
-Updates the lock table when a record is removed. */
-void
-lock_update_delete(
-/*===============*/
-	const buf_block_t*	block,	/*!< in: buffer block containing rec */
-	const rec_t*		rec)	/*!< in: the record to be removed */
+#ifdef UNIV_DEBUG
+/** Checks if the record has gap or next-key lock
+@param block block buffer block containing rec
+@param heap_no heap number of the record to check
+@return true if the record has gap or ordinary lock, false otherwise
+*/
+inline bool lock_rec_has_gap_or_ordinary(const buf_block_t *block,
+                                         ulint heap_no,
+                                         bool check_locking_read)
+{
+  ut_ad(lock_mutex_own());
+  if (heap_no == PAGE_HEAP_NO_INFIMUM)
+    return false;
+  bool gap= false;
+  bool locking_read= false;
+  for (lock_t *lock= lock_rec_get_first(lock_sys->rec_hash, block, heap_no);
+       lock != NULL; lock= lock_rec_get_next(heap_no, lock))
+    if ((!check_locking_read || !lock_get_wait(lock)) &&
+        !lock_rec_get_insert_intention(lock) &&
+        (heap_no == PAGE_HEAP_NO_SUPREMUM || !lock_rec_get_rec_not_gap(lock)))
+    {
+      gap = true;
+      if (!check_locking_read)
+        break;
+      if (lock->trx->locking_read_is_active(block->page.id, heap_no))
+      {
+        locking_read = true;
+        break;
+      }
+    }
+  return gap && (!check_locking_read || !locking_read);
+}
+#endif /* !defined(DBUG_OFF) */
+
+/** Updates the lock table when a record is removed.
+@param block block buffer block containing rec
+@param rec the record to be removed
+@param from_purge true if the records is deleted from purge process, false
+otherwise
+*/
+void lock_update_delete(const buf_block_t *block, const rec_t *rec,
+                        bool from_purge, bool convert_lock_to_gap)
 {
 	const page_t*	page = block->frame;
 	ulint		heap_no;
@@ -3494,9 +3530,16 @@ lock_update_delete(
 	lock_mutex_enter();
 
 	/* Let the next record inherit the locks from rec, in gap mode */
-
-	lock_rec_inherit_to_gap(block, block, next_heap_no, heap_no);
-
+	if (!from_purge)
+		lock_rec_inherit_to_gap(block, block, next_heap_no, heap_no,
+		    convert_lock_to_gap);
+#ifdef UNIV_DEBUG
+	else if (lock_rec_has_gap_or_ordinary(block, heap_no, true)) {
+			ut_a(rec_get_deleted_flag(rec, page_is_comp(page)));
+			ut_a(lock_rec_has_gap_or_ordinary(block,
+				next_heap_no, false));
+	}
+#endif // UNIV_DEBUG
 	/* Reset the lock bits on rec and release waiting transactions */
 
 	lock_rec_reset_and_release_wait(block, heap_no);
@@ -5582,27 +5625,26 @@ lock_validate()
 #endif /* UNIV_DEBUG */
 /*============ RECORD LOCK CHECKS FOR ROW OPERATIONS ====================*/
 
-/*********************************************************************//**
-Checks if locks of other transactions prevent an immediate insert of
+/** Checks if locks of other transactions prevent an immediate insert of
 a record. If they do, first tests if the query thread should anyway
 be suspended for some reason; if not, then puts the transaction and
 the query thread to the lock wait state and inserts a waiting request
 for a gap x-lock to the lock queue.
+@param flags if BTR_NO_LOCKING_FLAG bit is set, does nothing
+@param rec record after which to insert
+@param block [in,out] buffer block of rec
+@param index index
+@param thr query thread
+@param mtr [in,out] mini-transaction
+@param inherit [out] set to TRUE if the new inserted record maybe should
+inherit LOCK_GAP type locks from the successor record
+@param first_rec true if the function is invoked for the first rec in the range
+of delete-marked records
 @return DB_SUCCESS, DB_LOCK_WAIT, or DB_DEADLOCK */
-dberr_t
-lock_rec_insert_check_and_lock(
-/*===========================*/
-	ulint		flags,	/*!< in: if BTR_NO_LOCKING_FLAG bit is
-				set, does nothing */
-	const rec_t*	rec,	/*!< in: record after which to insert */
-	buf_block_t*	block,	/*!< in/out: buffer block of rec */
-	dict_index_t*	index,	/*!< in: index */
-	que_thr_t*	thr,	/*!< in: query thread */
-	mtr_t*		mtr,	/*!< in/out: mini-transaction */
-	ibool*		inherit)/*!< out: set to TRUE if the new
-				inserted record maybe should inherit
-				LOCK_GAP type locks from the successor
-				record */
+dberr_t lock_rec_insert_check_and_lock(ulint flags, const rec_t *rec,
+                                       buf_block_t *block, dict_index_t *index,
+                                       que_thr_t *thr, mtr_t *mtr,
+                                       ibool *inherit, bool first_rec)
 {
 	ut_ad(block->frame == page_align(rec));
 	ut_ad(!dict_index_is_online_ddl(index)
@@ -5642,14 +5684,14 @@ lock_rec_insert_check_and_lock(
 
 		lock_mutex_exit();
 
-		if (inherit_in && !dict_index_is_clust(index)) {
+		if (first_rec && inherit_in && !dict_index_is_clust(index)) {
 			/* Update the page max trx id field */
 			page_update_max_trx_id(block,
 					       buf_block_get_page_zip(block),
 					       trx->id, mtr);
 		}
-
-		*inherit = FALSE;
+		if (first_rec)
+			*inherit = FALSE;
 
 		return(DB_SUCCESS);
 	}
@@ -5660,7 +5702,8 @@ lock_rec_insert_check_and_lock(
 		return(DB_SUCCESS);
 	}
 
-	*inherit = TRUE;
+	if (first_rec)
+		*inherit = TRUE;
 
 	/* If another transaction has an explicit lock request which locks
 	the gap, waiting or granted, on the successor, the insert has to wait.
@@ -5700,13 +5743,15 @@ lock_rec_insert_check_and_lock(
 		err = DB_SUCCESS;
 		/* fall through */
 	case DB_SUCCESS:
-		if (!inherit_in || dict_index_is_clust(index)) {
+		if ((first_rec && !inherit_in) || dict_index_is_clust(index)) {
 			break;
 		}
 
 		/* Update the page max trx id field */
-		page_update_max_trx_id(
-			block, buf_block_get_page_zip(block), trx->id, mtr);
+		if (first_rec)
+			page_update_max_trx_id(
+				block, buf_block_get_page_zip(block), trx->id,
+				mtr);
 	default:
 		/* We only care about the two return values. */
 		break;
