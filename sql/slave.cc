@@ -504,7 +504,7 @@ static void bg_rpl_load_gtid_slave_state(void *)
 static void bg_slave_kill(void *victim)
 {
   THD *to_kill= (THD *)victim;
-  to_kill->awake(KILL_CONNECTION);
+  to_kill->kill_me_pls(KILL_CONNECTION);
   mysql_mutex_lock(&to_kill->LOCK_wakeup_ready);
   to_kill->rgi_slave->killed_for_retry= rpl_group_info::RETRY_KILL_KILLED;
   mysql_cond_broadcast(&to_kill->COND_wakeup_ready);
@@ -1082,7 +1082,8 @@ terminate_slave_thread(THD *thd,
     int err __attribute__((unused))= pthread_kill(thd->real_id, thr_client_alarm);
     DBUG_ASSERT(err != EINVAL);
 #endif
-    thd->awake_no_mutex(NOT_KILLED);
+    thd->kill_me_pls_no_mutex(NOT_KILLED);
+
 
     mysql_mutex_unlock(&thd->LOCK_thd_kill);
     mysql_mutex_unlock(&thd->LOCK_thd_data);
@@ -4970,7 +4971,7 @@ err:
   {
     /*
       Here we need to clear the active VIO before closing the
-      connection with the master.  The reason is that THD::awake()
+      connection with the master.  The reason is that THD::kill_me_pls()
       might be called from terminate_slave_thread() because somebody
       issued a STOP SLAVE.  If that happends, the close_active_vio()
       can be called in the middle of closing the VIO associated with

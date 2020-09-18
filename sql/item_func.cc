@@ -4014,7 +4014,7 @@ int Interruptible_wait::wait(mysql_cond_t *cond, mysql_mutex_t *mutex)
       timeout= m_abs_timeout;
 
     error= mysql_cond_timedwait(cond, mutex, &timeout);
-    if (m_thd->check_killed())
+    if (m_thd->check_killed(FALSE))
       break;
     if (error == ETIMEDOUT || error == ETIME)
     {

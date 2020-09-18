@@ -3419,7 +3419,7 @@ public:
   /*
     If checking this in conjunction with a wait condition, please
     include a check after enter_cond() if you want to avoid a race
-    condition. For details see the implementation of awake(),
+    condition. For details see the implementation of kill_me_pls(),
     especially the "broadcast" part.
   */
   killed_state volatile killed;
@@ -3684,12 +3684,12 @@ public:
   }
   void close_active_vio();
 #endif
-  void awake_no_mutex(killed_state state_to_set);
-  void awake(killed_state state_to_set)
+  void kill_me_pls_no_mutex(killed_state state_to_set);
+  void kill_me_pls(killed_state state_to_set)
   {
     mysql_mutex_lock(&LOCK_thd_kill);
     mysql_mutex_lock(&LOCK_thd_data);
-    awake_no_mutex(state_to_set);
+    kill_me_pls_no_mutex(state_to_set);
     mysql_mutex_unlock(&LOCK_thd_data);
     mysql_mutex_unlock(&LOCK_thd_kill);
   }
@@ -3750,7 +3750,7 @@ public:
       Putting the mutex unlock in thd->exit_cond() ensures that
       mysys_var->current_mutex is always unlocked _before_ mysys_var->mutex is
       locked (if that would not be the case, you'll get a deadlock if someone
-      does a THD::awake() on you).
+      does a THD::kill_me_pls() on you).
     */
     mysql_mutex_unlock(mysys_var->current_mutex);
     mysql_mutex_lock(&mysys_var->mutex);
