@@ -8475,6 +8475,24 @@ bool TABLE_LIST::is_table_ref_id_equal(TABLE_SHARE *s)
         memcmp(tabledef_version.str, s->tabledef_version.str,
                tabledef_version.length) == 0)
     {
+      if (table->triggers)
+      {
+
+        ulonglong stmt_create= (select_lex ?
+                                select_lex->parent_lex->thd->create_time :
+                                0);
+        if (stmt_create)
+          for(uint i= 0; i < TRG_EVENT_MAX; i++)
+            for (uint j= 0; j < TRG_ACTION_MAX; j++)
+            {
+              Trigger *tr=
+                table->triggers->get_trigger((trg_event_type)i,
+                                             (trg_action_time_type)j);
+              if (tr)
+                if (stmt_create <= tr->create_time)
+                  return FALSE;
+            }
+      }
       set_table_id(s);
       return TRUE;
     }

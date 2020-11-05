@@ -1079,6 +1079,7 @@ public:
 
   LEX_STRING name; /* name for named prepared statements */
   LEX *lex;                                     // parse tree descriptor
+  ulonglong create_time;
   /*
     Points to the query associated with this statement. It's const, but
     we need to declare it char * because all table handlers are written
