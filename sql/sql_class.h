@@ -851,6 +851,7 @@ typedef struct system_variables
 
   vers_asof_timestamp_t vers_asof_timestamp;
   ulong vers_alter_history;
+  my_bool force_fields_visible;
 } SV;
 
 /**
@@ -5504,6 +5505,8 @@ public:
   {
     lex= backup_lex;
   }
+
+  bool vers_modify_sys_field() const;
 };
 
 
