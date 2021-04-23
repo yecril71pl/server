@@ -614,29 +614,6 @@ lock_rec_get_gap(
 	return(lock->type_mode & LOCK_GAP);
 }
 
-bool lock_rec_has_gap(buf_block_t *block, ulint heap_no)
-{
-  if (heap_no == PAGE_HEAP_NO_INFIMUM)
-    return false;
-
-  bool result = false;
-
-  lock_mutex_enter();
-  for (lock_t *lock= lock_rec_get_first(lock_sys->rec_hash,
-                                        block, heap_no);
-       lock != NULL; lock= lock_rec_get_next(heap_no, lock))
-    if ((heap_no == PAGE_HEAP_NO_SUPREMUM) || lock_rec_get_gap(lock) ||
-        (lock->type_mode & ~(LOCK_MODE_MASK | LOCK_TYPE_MASK)) ==
-            LOCK_ORDINARY)
-    {
-      result = true;
-      break;
-    }
-  lock_mutex_exit();
-
-  return result;
-}
-
 /*********************************************************************//**
 Gets the LOCK_REC_NOT_GAP flag of a record lock.
 @return LOCK_REC_NOT_GAP or 0 */
@@ -3491,6 +3468,29 @@ lock_update_insert(
 		block, receiver_heap_no, donator_heap_no);
 }
 
+#if !defined(DBUG_OFF)
+inline bool lock_rec_has_gap(const buf_block_t *block, ulint heap_no)
+{
+  if (heap_no == PAGE_HEAP_NO_INFIMUM)
+    return false;
+
+  bool result = false;
+
+  for (lock_t *lock= lock_rec_get_first(lock_sys->rec_hash,
+                                        block, heap_no);
+       lock != NULL; lock= lock_rec_get_next(heap_no, lock))
+    if ((heap_no == PAGE_HEAP_NO_SUPREMUM) || lock_rec_get_gap(lock) ||
+        (lock->type_mode & ~(LOCK_MODE_MASK | LOCK_TYPE_MASK)) ==
+            LOCK_ORDINARY)
+    {
+      result = true;
+      break;
+    }
+
+  return result;
+}
+#endif // !defined(DBUG_OFF)
+
 /*************************************************************//**
 Updates the lock table when a record is removed. */
 void
@@ -3523,7 +3523,10 @@ lock_update_delete(
 	/* Let the next record inherit the locks from rec, in gap mode */
 	if (!interesting)
 		lock_rec_inherit_to_gap(block, block, next_heap_no, heap_no, interesting);
-
+#if !defined(DBUG_OFF)
+	else if (lock_rec_has_gap(block, heap_no))
+		      ut_ad(lock_rec_has_gap(block, next_heap_no));
+#endif // !defined(DBUG_OFF)
 	/* Reset the lock bits on rec and release waiting transactions */
 
 	lock_rec_reset_and_release_wait(block, heap_no);
