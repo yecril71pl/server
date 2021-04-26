@@ -1,8 +1,5 @@
 SET @saved_frequency = @@GLOBAL.innodb_purge_rseg_truncate_frequency;
 SET GLOBAL innodb_purge_rseg_truncate_frequency = 1;
-##########
-# test for isolation level 
-###
 #
 # Create parent table
 #

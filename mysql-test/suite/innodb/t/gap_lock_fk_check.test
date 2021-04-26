@@ -12,10 +12,6 @@ SET GLOBAL innodb_purge_rseg_truncate_frequency = 1;
 --let $pg_not_gap = ($pg_val*2)
 --let $gaps_count = 1
 
---echo ##########
---echo # test for isolation level $isolation_level
---echo ###
-
 --echo #
 --echo # Create parent table
 --echo #

@@ -482,54 +482,44 @@ btr_cur_compress_if_useful(
 				cursor position even if compression occurs */
 	mtr_t*		mtr)	/*!< in/out: mini-transaction */
 	MY_ATTRIBUTE((nonnull));
-/*******************************************************//**
-Removes the record on which the tree cursor is positioned. It is assumed
+/** Removes the record on which the tree cursor is positioned. It is assumed
 that the mtr has an x-latch on the page where the cursor is positioned,
 but no latch on the whole tree.
+@param cursor cursor on the record to delete; cursor stays valid: if deletion
+succeeds, on function exit it points to the successor of the deleted record
+@param flags BTR_CREATE_FLAG or 0
+@param mtr if this function returns TRUE on a leaf page of a
+secondary index, the mtr must be committed before latching any further pages
+@param from_purge true if the record is deleted by purge process, false
+otherwise
 @return TRUE if success, i.e., the page did not become too empty */
-ibool
-btr_cur_optimistic_delete(
-/*===========================*/
-	btr_cur_t*	cursor,	/*!< in: cursor on the record to delete;
-				cursor stays valid: if deletion succeeds,
-				on function exit it points to the successor
-				of the deleted record */
-	ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
-	mtr_t*		mtr,	/*!< in: mtr; if this function returns
-				TRUE on a leaf page of a secondary
-				index, the mtr must be committed
-				before latching any further pages */
-	bool interesting=false)
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
-/*************************************************************//**
-Removes the record on which the tree cursor is positioned. Tries
+ibool btr_cur_optimistic_delete(btr_cur_t *cursor, ulint flags, mtr_t *mtr,
+                                bool from_purge= false)
+    MY_ATTRIBUTE((nonnull, warn_unused_result));
+/** Removes the record on which the tree cursor is positioned. Tries
 to compress the page if its fillfactor drops below a threshold
 or if it is the only page on the level. It is assumed that mtr holds
 an x-latch on the tree and on the cursor page. To avoid deadlocks,
 mtr must also own x-latches to brothers of page, if those brothers
 exist.
+@param err [out]  DB_SUCCESS or DB_OUT_OF_FILE_SPACE; the latter may occur
+because we may have to update node pointers on upper levels, and in the case
+of variable length keys these may actually grow in size
+@param has_reserved_extents  TRUE if the caller has already reserved enough
+free extents so that he knows that the operation will succeed
+@param cursor cursor on the record to delete; if compression does not occur,
+the cursor stays valid: it points to successor of deleted record on function
+exit
+@param flags BTR_CREATE_FLAG or 0
+@param rollback performing rollback?
+@param mtr mtr
+@param from_purge true if the record is deleted by purge process, false
+otherwise
 @return TRUE if compression occurred */
-ibool
-btr_cur_pessimistic_delete(
-/*=======================*/
-	dberr_t*		err,	/*!< out: DB_SUCCESS or DB_OUT_OF_FILE_SPACE;
-				the latter may occur because we may have
-				to update node pointers on upper levels,
-				and in the case of variable length keys
-				these may actually grow in size */
-	ibool		has_reserved_extents, /*!< in: TRUE if the
-				caller has already reserved enough free
-				extents so that he knows that the operation
-				will succeed */
-	btr_cur_t*	cursor,	/*!< in: cursor on the record to delete;
-				if compression does not occur, the cursor
-				stays valid: it points to successor of
-				deleted record on function exit */
-	ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
-	bool		rollback,/*!< in: performing rollback? */
-	mtr_t*		mtr,	/*!< in: mtr */
-	bool interesting=false)
-	MY_ATTRIBUTE((nonnull));
+ibool btr_cur_pessimistic_delete(dberr_t *err, ibool has_reserved_extents,
+                                 btr_cur_t *cursor, ulint flags, bool rollback,
+                                 mtr_t *mtr, bool from_purge= false)
+    MY_ATTRIBUTE((nonnull));
 /** Delete the node pointer in a parent page.
 @param[in,out]	parent	cursor pointing to parent record
 @param[in,out]	mtr	mini-transaction */

@@ -1668,8 +1668,8 @@ row_ins_check_foreign_constraint(
 
 		cmp = cmp_dtuple_rec(entry, rec, offsets);
 
-                bool deleted_flag = rec_get_deleted_flag(rec,
-                      rec_offs_comp(offsets));
+		bool deleted_flag = rec_get_deleted_flag(rec,
+			rec_offs_comp(offsets));
 		if (cmp == 0) {
 			if (deleted_flag) {
 				/* In delete-marked records, DB_TRX_ID must
@@ -1790,7 +1790,7 @@ row_ins_check_foreign_constraint(
 				? DB_SUCCESS
 				: row_ins_set_shared_rec_lock(
 					deleted_flag ? LOCK_ORDINARY : LOCK_GAP,
-                                        block,
+					block,
 					rec, check_index, offsets, thr);
 
 			switch (err) {
@@ -1807,8 +1807,8 @@ row_ins_check_foreign_constraint(
 				break;
 			}
 
-                        if (skip_gap_lock || !deleted_flag)
-			      goto end_scan;
+			if (skip_gap_lock || !deleted_flag)
+				goto end_scan;
 		}
 	} while (btr_pcur_move_to_next(&pcur, &mtr));
 
@@ -2166,10 +2166,8 @@ row_ins_scan_sec_index_for_duplicate(
 		}
 
 		if (page_rec_is_supremum(rec) ||
-                    rec_get_deleted_flag(rec, rec_offs_comp(offsets)) ) {
-
+			rec_get_deleted_flag(rec, rec_offs_comp(offsets)) )
 			continue;
-		}
 
 		cmp = cmp_dtuple_rec(entry, rec, offsets);
 

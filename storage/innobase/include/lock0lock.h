@@ -62,9 +62,6 @@ Gets the size of a lock struct.
 ulint
 lock_get_size(void);
 /*===============*/
-
-bool lock_rec_has_gap(buf_block_t *block, ulint heap_no);
-
 /*********************************************************************//**
 Creates the lock system at database start. */
 void
@@ -234,14 +231,14 @@ lock_update_insert(
 /*===============*/
 	const buf_block_t*	block,	/*!< in: buffer block containing rec */
 	const rec_t*		rec);	/*!< in: the inserted record */
-/*************************************************************//**
-Updates the lock table when a record is removed. */
-void
-lock_update_delete(
-/*===============*/
-	const buf_block_t*	block,	/*!< in: buffer block containing rec */
-	const rec_t*		rec,	/*!< in: the record to be removed */
-	bool interesting = false);
+/** Updates the lock table when a record is removed.
+@param block block buffer block containing rec
+@param rec the record to be removed
+@param from_purge true if the records is deleted from purge process, false
+otherwise
+*/
+void lock_update_delete(const buf_block_t *block, const rec_t *rec,
+                        bool from_purge= false);
 /*********************************************************************//**
 Stores on the page infimum record the explicit locks of another record.
 This function is used to store the lock state of a record when it is
@@ -281,30 +278,27 @@ lock_rec_expl_exist_on_page(
 	ulint	space,	/*!< in: space id */
 	ulint	page_no)/*!< in: page number */
 	MY_ATTRIBUTE((warn_unused_result));
-/*********************************************************************//**
-Checks if locks of other transactions prevent an immediate insert of
+/** Checks if locks of other transactions prevent an immediate insert of
 a record. If they do, first tests if the query thread should anyway
 be suspended for some reason; if not, then puts the transaction and
 the query thread to the lock wait state and inserts a waiting request
 for a gap x-lock to the lock queue.
+@param flags if BTR_NO_LOCKING_FLAG bit is set, does nothing
+@param rec record after which to insert
+@param block [in,out] buffer block of rec
+@param index index
+@param thr query thread
+@param mtr [in,out] mini-transaction
+@param inherit [out] set to TRUE if the new inserted record maybe should
+inherit LOCK_GAP type locks from the successor record
+@param first_rec true if the function is invoked for the first rec in the range
+of delete-marked records
 @return DB_SUCCESS, DB_LOCK_WAIT, or DB_DEADLOCK */
-dberr_t
-lock_rec_insert_check_and_lock(
-/*===========================*/
-	ulint		flags,	/*!< in: if BTR_NO_LOCKING_FLAG bit is
-				set, does nothing */
-	const rec_t*	rec,	/*!< in: record after which to insert */
-	buf_block_t*	block,	/*!< in/out: buffer block of rec */
-	dict_index_t*	index,	/*!< in: index */
-	que_thr_t*	thr,	/*!< in: query thread */
-	mtr_t*		mtr,	/*!< in/out: mini-transaction */
-	ibool*		inherit,
-	bool first_rec)/*!< out: set to TRUE if the new
-				inserted record maybe should inherit
-				LOCK_GAP type locks from the successor
-				record */
-	MY_ATTRIBUTE((warn_unused_result));
-
+dberr_t lock_rec_insert_check_and_lock(ulint flags, const rec_t *rec,
+                                       buf_block_t *block, dict_index_t *index,
+                                       que_thr_t *thr, mtr_t *mtr,
+                                       ibool *inherit, bool first_rec)
+    MY_ATTRIBUTE((warn_unused_result));
 /*********************************************************************//**
 Checks if locks of other transactions prevent an immediate modify (update,
 delete mark, or delete unmark) of a clustered index record. If they do,

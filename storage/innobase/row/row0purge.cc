@@ -1188,8 +1188,6 @@ row_purge_end(
 {
 	ut_ad(thr);
 
-	DEBUG_SYNC(thr_get_trx(thr)->mysql_thd, "row_purge_end_enter");
-
 	thr->run_node = static_cast<purge_node_t*>(thr->run_node)->end();
 
 	ut_a(thr->run_node != NULL);
