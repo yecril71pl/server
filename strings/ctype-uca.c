@@ -34466,6 +34466,7 @@ MY_COLLATION_HANDLER my_collation_mb_uca_nopad_handler =
     my_coll_init_uca,
     my_strnncoll_any_uca,
     my_strnncollsp_generic_uca_nopad,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_generic_uca_nopad,
     my_strnxfrmlen_any_uca,
     my_like_range_mb,
@@ -34483,6 +34484,7 @@ MY_COLLATION_HANDLER my_collation_generic_uca_nopad_handler =
     my_coll_init_uca,
     my_strnncoll_any_uca,
     my_strnncollsp_generic_uca_nopad,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_generic_uca_nopad,
     my_strnxfrmlen_any_uca,
     my_like_range_generic,
@@ -34499,6 +34501,7 @@ MY_COLLATION_HANDLER my_collation_any_uca_handler_multilevel=
     my_coll_init_uca,
     my_strnncoll_any_uca_multilevel,
     my_strnncollsp_any_uca_multilevel,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_any_uca_multilevel,
     my_strnxfrmlen_any_uca_multilevel,
     my_like_range_generic,
@@ -34515,6 +34518,7 @@ MY_COLLATION_HANDLER my_collation_generic_uca_nopad_handler_multilevel =
     my_coll_init_uca,
     my_strnncoll_any_uca_multilevel,
     my_strnncollsp_generic_uca_nopad_multilevel,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_any_uca_multilevel,
     my_strnxfrmlen_any_uca_multilevel,
     my_like_range_generic,
@@ -34566,6 +34570,7 @@ MY_COLLATION_HANDLER my_collation_ucs2_uca_handler =
   my_coll_init_uca,	/* init */
   my_strnncoll_ucs2_uca,
   my_strnncollsp_ucs2_uca,
+  my_strnncollsp_nchars_generic,
   my_strnxfrm_ucs2_uca,
   my_strnxfrmlen_any_uca,
   my_like_range_generic,
@@ -35531,6 +35536,7 @@ MY_COLLATION_HANDLER my_collation_any_uca_handler =
     my_coll_init_uca,	/* init */
     my_strnncoll_any_uca,
     my_strnncollsp_any_uca,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_any_uca,
     my_strnxfrmlen_any_uca,
     my_like_range_mb,
@@ -37465,6 +37471,7 @@ MY_COLLATION_HANDLER my_collation_utf32_uca_handler =
     my_coll_init_uca,        /* init */
     my_strnncoll_any_uca,
     my_strnncollsp_any_uca,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_any_uca,
     my_strnxfrmlen_any_uca,
     my_like_range_generic,
@@ -38430,6 +38437,7 @@ MY_COLLATION_HANDLER my_collation_utf16_uca_handler =
     my_coll_init_uca,        /* init */
     my_strnncoll_any_uca,
     my_strnncollsp_any_uca,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_any_uca,
     my_strnxfrmlen_any_uca,
     my_like_range_generic,

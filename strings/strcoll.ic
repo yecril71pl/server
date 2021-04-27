@@ -221,6 +221,67 @@ MY_FUNCTION_NAME(strnncollsp)(CHARSET_INFO *cs __attribute__((unused)),
 {
   return MY_FUNCTION_NAME(strnncoll)(cs, a, a_length, b, b_length, FALSE);
 }
+
+/**
+  Compare two strings according to the collation,
+  using the NOPAD comparison style.
+
+  @param cs          - the character set and collation
+  @param a           - the left string
+  @param a_length    - the length of the left string
+  @param b           - the right string
+  @param b_length    - the length of the right string
+  @param nchars      - compare this amount of characters only
+  @return            - the comparison result
+*/
+static int
+MY_FUNCTION_NAME(strnncollsp_nchars)(CHARSET_INFO *cs __attribute__((unused)),
+                                     const uchar *a, size_t a_length,
+                                     const uchar *b, size_t b_length,
+                                     size_t nchars)
+{
+  const uchar *a_end= a + a_length;
+  const uchar *b_end= b + b_length;
+  for ( ; ; nchars--)
+  {
+    int a_weight, b_weight, res;
+    uint a_wlen, b_wlen;
+
+    if (!nchars)
+      return 0;
+
+    a_wlen= MY_FUNCTION_NAME(scan_weight)(&a_weight, a, a_end);
+    b_wlen= MY_FUNCTION_NAME(scan_weight)(&b_weight, b, b_end);
+    /*
+      a_wlen  b_wlen Comment
+      ------  ------ -------
+      0       0      Strings ended simultaneously, "a" and "b" are equal.
+      0       >0     "a" is a prefix of "b", so "a" is smaller.
+      >0      0      "b" is a prefix of "a", so "b" is smaller.
+      >0      >0     Two weights were scanned, check weight difference.
+    */
+    if (!a_wlen)
+      return b_wlen ? -b_weight : 0;
+
+    if (!b_wlen)
+      return a_weight;
+
+    if ((res= (a_weight - b_weight)))
+      return res;
+    /*
+      None of the strings has ended yet.
+    */
+    DBUG_ASSERT(a < a_end);
+    DBUG_ASSERT(b < b_end);
+    a+= a_wlen;
+    b+= b_wlen;
+  }
+  DBUG_ASSERT(0);
+  return 0;
+}
+
+
+
 #else
 /**
   Compare two strings according to the collation, with PAD SPACE handling.
@@ -276,6 +337,58 @@ MY_FUNCTION_NAME(strnncollsp)(CHARSET_INFO *cs __attribute__((unused)),
   DBUG_ASSERT(0);
   return 0;
 }
+
+/**
+  Compare two strings according to the collation, with nchars limit,
+  with PAD SPACE comparison style.
+
+  @param cs          - the character set and collation
+  @param a           - the left string
+  @param a_length    - the length of the left string
+  @param b           - the right string
+  @param b_length    - the length of the right string
+  @param nchars      - compare this amount of characters only
+  @return            - the comparison result
+*/
+static int
+MY_FUNCTION_NAME(strnncollsp_nchars)(CHARSET_INFO *cs __attribute__((unused)),
+                                     const uchar *a, size_t a_length,
+                                     const uchar *b, size_t b_length,
+                                     size_t nchars)
+{
+  const uchar *a_end= a + a_length;
+  const uchar *b_end= b + b_length;
+  for ( ; ; nchars--)
+  {
+    int a_weight, b_weight, res;
+    uint a_wlen, b_wlen;
+    if (!nchars)
+      return 0;
+    a_wlen= MY_FUNCTION_NAME(scan_weight)(&a_weight, a, a_end);
+    b_wlen= MY_FUNCTION_NAME(scan_weight)(&b_weight, b, b_end);
+    if ((res= (a_weight - b_weight)))
+    {
+      /* Got two different weights. See comments in strnncollsp above. */
+      return res;
+    }
+    if (!a_wlen && !b_wlen)
+    {
+      /* Got two auto-generated trailing spaces. */
+      DBUG_ASSERT(a == a_end);
+      DBUG_ASSERT(b == b_end);
+      return 0;
+    }
+    /*
+      At least one of the strings has not ended yet, continue comparison.
+    */
+    DBUG_ASSERT(a < a_end || b < b_end);
+    a+= a_wlen;
+    b+= b_wlen;
+  }
+  DBUG_ASSERT(0);
+  return 0;
+}
+
 #endif
 
 

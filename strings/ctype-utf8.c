@@ -5532,6 +5532,7 @@ static MY_COLLATION_HANDLER my_collation_utf8_general_ci_handler =
     NULL,               /* init */
     my_strnncoll_utf8_general_ci,
     my_strnncollsp_utf8_general_ci,
+    my_strnncollsp_nchars_utf8_general_ci,
     my_strnxfrm_unicode,
     my_strnxfrmlen_unicode,
     my_like_range_mb,
@@ -5548,6 +5549,7 @@ static MY_COLLATION_HANDLER my_collation_utf8_general_mysql500_ci_handler =
     NULL,               /* init */
     my_strnncoll_utf8_general_mysql500_ci,
     my_strnncollsp_utf8_general_mysql500_ci,
+    my_strnncollsp_nchars_utf8_general_mysql500_ci,
     my_strnxfrm_unicode,
     my_strnxfrmlen_unicode,
     my_like_range_mb,
@@ -5564,6 +5566,7 @@ static MY_COLLATION_HANDLER my_collation_utf8_bin_handler =
     NULL,		/* init */
     my_strnncoll_utf8_bin,
     my_strnncollsp_utf8_bin,
+    my_strnncollsp_nchars_utf8_bin,
     my_strnxfrm_unicode,
     my_strnxfrmlen_unicode,
     my_like_range_mb,
@@ -5580,6 +5583,7 @@ static MY_COLLATION_HANDLER my_collation_utf8_general_nopad_ci_handler =
   NULL,               /* init */
   my_strnncoll_utf8_general_ci,
   my_strnncollsp_utf8_general_nopad_ci,
+  my_strnncollsp_nchars_utf8_general_nopad_ci,
   my_strnxfrm_unicode_nopad,
   my_strnxfrmlen_unicode,
   my_like_range_mb,
@@ -5596,6 +5600,7 @@ static MY_COLLATION_HANDLER my_collation_utf8_nopad_bin_handler =
   NULL,		/* init */
   my_strnncoll_utf8_bin,
   my_strnncollsp_utf8_nopad_bin,
+  my_strnncollsp_nchars_utf8_nopad_bin,
   my_strnxfrm_unicode_nopad,
   my_strnxfrmlen_unicode,
   my_like_range_mb,
@@ -5925,6 +5930,7 @@ static MY_COLLATION_HANDLER my_collation_cs_handler =
     NULL,		/* init */
     my_strnncoll_utf8_cs,
     my_strnncollsp_utf8_cs,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_unicode,
     my_strnxfrmlen_unicode,
     my_like_range_simple,
@@ -7216,6 +7222,7 @@ static MY_COLLATION_HANDLER my_collation_filename_handler =
     NULL,               /* init */
     my_strnncoll_simple,
     my_strnncollsp_simple,
+    my_strnncollsp_nchars_generic,
     my_strnxfrm_unicode,
     my_strnxfrmlen_unicode,
     my_like_range_mb,
@@ -7893,6 +7900,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb4_general_ci_handler=
   NULL,               /* init */
   my_strnncoll_utf8mb4_general_ci,
   my_strnncollsp_utf8mb4_general_ci,
+  my_strnncollsp_nchars_utf8mb4_general_ci,
   my_strnxfrm_unicode,
   my_strnxfrmlen_unicode,
   my_like_range_mb,
@@ -7909,6 +7917,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb4_bin_handler =
     NULL,              /* init */
     my_strnncoll_utf8mb4_bin,
     my_strnncollsp_utf8mb4_bin,
+    my_strnncollsp_nchars_utf8mb4_bin,
     my_strnxfrm_unicode_full_bin,
     my_strnxfrmlen_unicode_full_bin,
     my_like_range_mb,
@@ -7925,6 +7934,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb4_general_nopad_ci_handler=
   NULL,               /* init */
   my_strnncoll_utf8mb4_general_ci,
   my_strnncollsp_utf8mb4_general_nopad_ci,
+  my_strnncollsp_nchars_utf8mb4_general_nopad_ci,
   my_strnxfrm_unicode_nopad,
   my_strnxfrmlen_unicode,
   my_like_range_mb,
@@ -7941,6 +7951,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb4_nopad_bin_handler =
   NULL,		/* init */
   my_strnncoll_utf8mb4_bin,
   my_strnncollsp_utf8mb4_nopad_bin,
+  my_strnncollsp_nchars_utf8mb4_nopad_bin,
   my_strnxfrm_unicode_full_nopad_bin,
   my_strnxfrmlen_unicode_full_bin,
   my_like_range_mb,

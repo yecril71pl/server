@@ -330,6 +330,32 @@ struct my_collation_handler_st
 		       const uchar *, size_t, const uchar *, size_t, my_bool);
   int     (*strnncollsp)(CHARSET_INFO *,
                          const uchar *, size_t, const uchar *, size_t);
+  /*
+    strncollsp_nchars() - similar to strnncollsp() but compares not more
+                          than nchars characters only.
+    This function is usually used to compare CHAR(N) values stored in records.
+    These record values are padded with trailing spaces up to the maximum
+    possible octet length. For example, a column of the data type
+      `CHAR(3) CHARACTER SET utf8mb4`
+    reserves 12 octets. If we store ASCII 'abc', the record we'll contain
+    'abc' followed by 9 space characters. Trailing spaces are just fillers here,
+    they are not actual data! To compare such buffers with CHAR(3) values,
+    we cannot use strncollsp(a,12,b,12) - it may return a wrong result in case
+    of a NOPAD collation of a multi-byte character set.
+    In such scenarios we should use strnncollsp_nchars(a,12,b,12,3).
+
+    Note, this function counts contraction parts as individual characters.
+    For example, the Czech letter 'ch' (in Czech collations)
+    is ordinary counted by "nchars" as TWO characters (not as one).
+    Also, we presume that the "nchars" limit will ignore only
+    trailing filler space characters (not important data). So the limit
+    will never tear apart contractions like 'ch' in the way that
+    'c' takes part in comparison while 'h' is ignored.
+  */
+  int     (*strnncollsp_nchars)(CHARSET_INFO *,
+                                const uchar *str1, size_t len1,
+                                const uchar *str2, size_t len2,
+                                size_t nchars);
   size_t     (*strnxfrm)(CHARSET_INFO *,
                          uchar *dst, size_t dstlen, uint nweights,
                          const uchar *src, size_t srclen, uint flags);
