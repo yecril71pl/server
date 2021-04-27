@@ -5253,7 +5253,8 @@ wrong_offs:
 		    && direction == 0
 		    && dtuple_get_n_fields_cmp(search_tuple)
 		    == dict_index_get_n_unique(index)
-		    && 0 == cmp_dtuple_rec(search_tuple, rec, offsets)) {
+		    && 0 == cmp_dtuple_rec(search_tuple, rec, offsets)
+		    && !rec_get_deleted_flag(rec, comp)) {
 no_gap_lock:
 			lock_type = LOCK_REC_NOT_GAP;
 		}
