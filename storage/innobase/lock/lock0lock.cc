@@ -3527,9 +3527,11 @@ void lock_update_delete(const buf_block_t *block, const rec_t *rec,
 	if (!from_purge)
 		lock_rec_inherit_to_gap(block, block, next_heap_no, heap_no);
 #if !defined(DBUG_OFF)
-	else if (lock_rec_has_gap_or_ordinary(block, heap_no))
+	else if (lock_rec_has_gap_or_ordinary(block, heap_no)) {
+			ut_a(rec_get_deleted_flag(rec, page_is_comp(page)));
 			ut_a(lock_rec_has_gap_or_ordinary(block,
 				next_heap_no));
+	}
 #endif // !defined(DBUG_OFF)
 	/* Reset the lock bits on rec and release waiting transactions */
 
