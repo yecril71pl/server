@@ -3482,7 +3482,8 @@ inline bool lock_rec_has_gap_or_ordinary(const buf_block_t *block,
   for (lock_t *lock= lock_rec_get_first(lock_sys->rec_hash,
                                         block, heap_no);
        lock != NULL; lock= lock_rec_get_next(heap_no, lock))
-    if ((heap_no == PAGE_HEAP_NO_SUPREMUM) || lock_rec_get_gap(lock) ||
+    if ((heap_no == PAGE_HEAP_NO_SUPREMUM) ||
+        (lock_rec_get_gap(lock) && !lock_rec_get_insert_intention(lock)) ||
         (lock->type_mode & ~(LOCK_MODE_MASK | LOCK_TYPE_MASK)) ==
             LOCK_ORDINARY)
     {
