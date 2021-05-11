@@ -141,7 +141,7 @@ enum options_client
   The --socket CLI option has different meanings
   across different operating systems.
  */
-#ifndef __WIN__
+#ifndef _WIN32
 #define SOCKET_PROTOCOL_TO_FORCE MYSQL_PROTOCOL_SOCKET
 #else
 #define SOCKET_PROTOCOL_TO_FORCE MYSQL_PROTOCOL_PIPE
@@ -172,7 +172,7 @@ static inline void warn_protocol_override(char *host,
     const char *protocol_name;
 
     if (*opt_protocol == MYSQL_PROTOCOL_DEFAULT
-#ifndef __WIN__
+#ifndef _WIN32
         && new_protocol == MYSQL_PROTOCOL_SOCKET
 #else
         && new_protocol == MYSQL_PROTOCOL_TCP
