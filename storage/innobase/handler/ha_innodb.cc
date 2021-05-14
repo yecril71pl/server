@@ -12830,7 +12830,6 @@ create_table_info_t::create_table_update_dict()
 		if (!innobase_fts_load_stopword(innobase_table, NULL, m_thd)) {
 			dict_table_close(innobase_table, FALSE, FALSE);
 			srv_active_wake_master_thread();
-			m_trx->free();
 			DBUG_RETURN(-1);
 		}
 
@@ -12978,6 +12977,12 @@ ha_innobase::create(
 	ut_ad(!srv_read_only_mode);
 
 	error = info.create_table_update_dict();
+
+	/* In case of error, free the transaction only if
+	it is newly created transaction in ha_innobase::create() */
+	if (own_trx && error) {
+		info.trx()->free();
+	}
 
 	/* Tell the InnoDB server that there might be work for
 	utility threads: */

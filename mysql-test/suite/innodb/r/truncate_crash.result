@@ -1,3 +1,4 @@
+call mtr.add_suppression("InnoDB: \\(\\Too many concurrent transactions\\)\\ writing .*");
 FLUSH TABLES;
 CREATE TABLE t1 (a INT PRIMARY KEY) ENGINE=InnoDB;
 INSERT INTO t1 VALUES (1),(2);
@@ -11,4 +12,14 @@ SELECT COUNT(*) FROM t1;
 COUNT(*)
 0
 TRUNCATE TABLE t1;
+DROP TABLE t1;
+#
+#  MDEV-25663 Double free of transaction during
+#	truncate operation
+#
+CREATE TABLE t1 (a INT, b CHAR(12), FULLTEXT KEY(b)) engine=InnoDB;
+SET DEBUG_DBUG='+d,ib_create_table_fail_too_many_trx';
+TRUNCATE table t1;
+ERROR HY000: Got error -1 "Internal error < 0 (Not system error)" from storage engine InnoDB
+SET DEBUG_DBUG='-d,ib_create_table_fail_too_many_trx';
 DROP TABLE t1;

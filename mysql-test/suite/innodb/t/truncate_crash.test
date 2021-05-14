@@ -3,6 +3,7 @@
 --source include/have_debug_sync.inc
 --source include/not_embedded.inc
 
+call mtr.add_suppression("InnoDB: \\(\\Too many concurrent transactions\\)\\ writing .*");
 FLUSH TABLES;
 CREATE TABLE t1 (a INT PRIMARY KEY) ENGINE=InnoDB;
 INSERT INTO t1 VALUES (1),(2);
@@ -20,4 +21,15 @@ disconnect wait;
 --replace_result 2 0
 SELECT COUNT(*) FROM t1;
 TRUNCATE TABLE t1;
+DROP TABLE t1;
+
+--echo #
+--echo #  MDEV-25663 Double free of transaction during
+--echo #	truncate operation
+--echo #
+CREATE TABLE t1 (a INT, b CHAR(12), FULLTEXT KEY(b)) engine=InnoDB;
+SET DEBUG_DBUG='+d,ib_create_table_fail_too_many_trx';
+--error ER_GET_ERRNO
+TRUNCATE table t1;
+SET DEBUG_DBUG='-d,ib_create_table_fail_too_many_trx';
 DROP TABLE t1;
