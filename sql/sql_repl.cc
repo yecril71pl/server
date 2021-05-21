@@ -4369,11 +4369,12 @@ bool show_binlogs(THD* thd)
 {
   LOG_INFO cur;
   MEM_ROOT mem_root;
-  binlog_file_entry *list;
+  binlog_file_entry *list, *cur_link;
   List<Item> field_list;
   Protocol *protocol= thd->protocol;
   uint retry_count= 0;
   size_t cur_dir_len;
+  MY_STAT cur_stat;
   DBUG_ENTER("show_binlogs");
 
   if (!mysql_bin_log.is_open())
@@ -4396,36 +4397,64 @@ retry:
     and all the log files from the index in sync without any index rotation
     in between.
   */
+  DEBUG_SYNC(thd, "at_before_lock_index");
+
   mysql_mutex_lock(mysql_bin_log.get_log_lock());
   mysql_bin_log.lock_index();
   mysql_bin_log.raw_get_current_log(&cur);
   mysql_mutex_unlock(mysql_bin_log.get_log_lock());
-  
+
   /* The following call unlocks lock_index */
   if ((!(list= get_binlog_list(&mem_root, false, true))))
     goto err;
+
+  /*
+    Get the timestamp of the current log to ensure logs haven't been deleted
+  */
+  if (!mysql_file_stat(key_file_binlog, cur.log_file_name, &cur_stat, MYF(0)))
+  {
+    if (retry_count++ < BINLOG_INDEX_RETRY_COUNT)
+    {
+      free_root(&mem_root, MYF(MY_MARK_BLOCKS_FREE));
+      goto retry;
+    }
+    else
+      goto err;
+  }
 
   DEBUG_SYNC(thd, "at_after_lock_index");
 
   // the 1st loop computes the sizes; If stat() fails, then retry
   cur_dir_len= dirname_length(cur.log_file_name);
-  for (binlog_file_entry *cur_link= list; cur_link; cur_link= cur_link->next)
+  cur_link= list;
+  while(cur_link)
   {
     const char *fname= cur_link->name.str;
     size_t dir_len=    dirname_length(fname);
     size_t length=     cur_link->name.length- dir_len;
+    my_bool file_found= FALSE;
 
     /* Skip directory name as we shouldn't include this in the result */
     cur_link->name.str+=    dir_len;
     cur_link->name.length-= dir_len;
 
     if (!(strncmp(fname+dir_len, cur.log_file_name+cur_dir_len, length)))
+    {
       cur_link->size= cur.pos;  /* The active log, use the active position */
+      file_found= TRUE;
+    }
     else
     {
       MY_STAT stat_info;
-      if (mysql_file_stat(key_file_binlog, fname, &stat_info, MYF(0)))
-	cur_link->size= stat_info.st_size;
+      /*
+        The file may exist, but ensure that it hasn't been deleted and
+        recreated by checking against the log that we assume is current.
+      */
+      if (mysql_file_stat(key_file_binlog, fname, &stat_info, MYF(0)) &&
+          (stat_info.st_mtim.tv_sec < cur_stat.st_mtim.tv_sec || 
+            (stat_info.st_mtim.tv_sec == cur_stat.st_mtim.tv_sec &&
+             stat_info.st_mtim.tv_nsec < cur_stat.st_mtim.tv_nsec)))
+        cur_link->size= stat_info.st_size;
       else
       {
         if (retry_count++ < BINLOG_INDEX_RETRY_COUNT)
@@ -4436,9 +4465,56 @@ retry:
 	cur_link->size= 0;
       }
     }
+
+    /*
+      We have iterated through all the files.
+      Before exiting, check if any new files have been written.
+      If a new file exists, include it in the SHOW.
+
+      It is okay if the current log file doesn't show the correct 
+      size; however, if it shows the wrong number of files, that
+      is what we want to fix. 
+
+      TODO: This is incomplete, if there is a new file, we should
+            reanalyze the current cur_link just in case it was 
+            extended. It also needs to have a check for RESET MASTER
+            in this logic.
+    */
+    if(file_found && !cur_link->next)
+    {
+      size_t new_log_file_len, new_log_dir_len;
+      char tmp_log_name[FN_REFLEN];
+      strmake_buf(tmp_log_name, cur.log_file_name);
+
+      /* Is there a new log in the rotation after our assumed current? */
+      if(!mysql_bin_log.find_log_pos(&cur, tmp_log_name, TRUE)
+        && mysql_bin_log.find_next_log(&cur, TRUE)) 
+      {
+        /* No new files */
+        break;
+      }
+
+      /* Yes, update the list with the next newest file */
+      if (!(cur_link->next= (binlog_file_entry *)
+                            alloc_root(&mem_root, sizeof(binlog_file_entry))))
+        goto err;
+
+      new_log_file_len = strlen(cur.log_file_name);
+      new_log_dir_len = dirname_length(cur.log_file_name);
+
+      cur_link->next->name.str= cur.log_file_name;
+      cur_link->next->name.str+= new_log_dir_len;
+
+      cur_link->next->name.length= new_log_file_len;
+      cur_link->next->name.length-= new_log_dir_len;
+      cur_link->next->next= NULL;
+    }
+    cur_link= cur_link->next;
   }
 
-  for (binlog_file_entry *cur_link= list; cur_link; cur_link= cur_link->next)
+  DEBUG_SYNC(thd, "at_before_show_binlogs_protocol_write");
+
+  for (cur_link= list; cur_link; cur_link= cur_link->next)
   {
     protocol->prepare_for_resend();
     protocol->store(cur_link->name.str, cur_link->name.length, &my_charset_bin);

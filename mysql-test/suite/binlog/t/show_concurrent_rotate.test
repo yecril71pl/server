@@ -8,11 +8,14 @@ FLUSH LOGS;
 FLUSH LOGS;
 FLUSH LOGS;
 
-SET DEBUG_SYNC= "at_after_lock_index WAIT_FOR con1_go";
+SET DEBUG_SYNC= "at_before_lock_index WAIT_FOR reset_done";
+SET DEBUG_SYNC= "at_after_lock_index SIGNAL con2_go WAIT_FOR con1_go";
 --send SHOW BINARY LOGS
 
 connect(con2,localhost,root,,);
 RESET MASTER;
+SET DEBUG_SYNC= "now SIGNAL reset_done";
+SET DEBUG_SYNC= "at_flush_pre_rotate_and_purge WAIT_FOR con2_go";
 FLUSH LOGS;
 SET DEBUG_SYNC= "now SIGNAL con1_go";
 
