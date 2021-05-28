@@ -106,7 +106,8 @@ sub sleep_until_file_created ($$$$) {
   my $pidfile= shift;
   my $timeout= shift;
   my $proc=     shift;
-  my $warn_seconds = shift;
+  my $warn_seconds= shift;
+  my $expected_shutdown= shift;
   my $sleeptime= 10; # Milliseconds
   my $loops= ($timeout * 10000) / $sleeptime;
 
@@ -120,7 +121,7 @@ sub sleep_until_file_created ($$$$) {
     my $seconds= ($loop * $sleeptime) / 1000;
 
     # Check if it died after the fork() was successful
-    if ( defined $proc and ! $proc->wait_one(0) )
+    if ( defined $proc and ! $proc->wait_one(0) and !$expected_shutdown)
     {
       mtr_warning("Process $proc died after mysql-test-run waited $seconds " .
 		  "seconds for $pidfile to be created.");

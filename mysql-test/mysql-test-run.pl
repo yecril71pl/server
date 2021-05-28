@@ -143,6 +143,7 @@ my $opt_start_dirty;
 my $opt_start_exit;
 my $start_only;
 my $file_wsrep_provider;
+my $expected_shutdown= 0;
 
 our @global_suppressions;
 
@@ -2758,7 +2759,8 @@ sub mysql_server_wait {
   if (!sleep_until_file_created($mysqld->value('pid-file'),
                                 $opt_start_timeout,
                                 $mysqld->{'proc'},
-                                $warn_seconds))
+                                $warn_seconds,
+                                $expected_shutdown))
   {
     $tinfo->{comment}= "Failed to start ".$mysqld->name() . "\n";
     return 1;
@@ -4664,6 +4666,7 @@ sub check_expected_crash_and_restart {
     if ( -f $expect_file )
     {
       mtr_verbose("Crash was expected, file '$expect_file' exists");
+      $expected_shutdown= 1;
 
       for (my $waits = 0;  $waits < 50;  mtr_milli_sleep(100), $waits++)
       {
@@ -4693,6 +4696,7 @@ sub check_expected_crash_and_restart {
 	  delete $mysqld->{'restart_opts'};
 	}
 	unlink($expect_file);
+	$expected_shutdown= 0;
 
 	# Start server with same settings as last time
 	mysqld_start($mysqld, $mysqld->{'started_opts'});
@@ -5077,7 +5081,8 @@ sub mysqld_start ($$) {
   }
 
   if (!sleep_until_file_created($mysqld->value('pid-file'),
-                      $opt_start_timeout, $mysqld->{'proc'}, $warn_seconds))
+                      $opt_start_timeout, $mysqld->{'proc'}, $warn_seconds,
+                      $expected_shutdown))
   {
     my $mname= $mysqld->name();
     mtr_error("Failed to start mysqld $mname with command $exe");
