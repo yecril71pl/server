@@ -141,7 +141,13 @@ elif [ "x$warning_mode" = "xmaintainer" ]; then
   debug_extra_cflags="-g3"
 else
 # Both C and C++ warnings
-  warnings="-Wall -Wextra -Wunused -Wwrite-strings -Wno-uninitialized -Wno-strict-aliasing -Wimplicit-fallthrough=2 -Wformat-security -Wvla"
+  ver=$(gcc -dumpversion|cut -c1,1)
+  flag=
+  if [ $ver -gt 6 ]
+  then
+    flag="-Wimplicit-fallthrough=2"
+  fi
+  warnings="-Wall -Wextra -Wunused -Wwrite-strings -Wno-uninitialized -Wno-strict-aliasing $flag -Wformat-security -Wvla"
 
 # For more warnings, uncomment the following line
 # warnings="$warnings -Wshadow"
