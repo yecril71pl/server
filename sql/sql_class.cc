@@ -7677,6 +7677,8 @@ bool THD::vers_insert_history() const
     return false;
   if (lex->sql_command != SQLCOM_INSERT &&
       lex->sql_command != SQLCOM_INSERT_SELECT &&
+      lex->sql_command != SQLCOM_REPLACE &&
+      lex->sql_command != SQLCOM_REPLACE_SELECT &&
       lex->sql_command != SQLCOM_LOAD)
     return false;
   switch (opt_secure_timestamp)

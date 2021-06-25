@@ -527,7 +527,7 @@ enum ha_base_keytype {
 #define HA_ERR_TABLESPACE_MISSING 194  /* Missing Tablespace */
 #define HA_ERR_SEQUENCE_INVALID_DATA 195
 #define HA_ERR_SEQUENCE_RUN_OUT   196
-#define HA_ERR_WRONG_ROW_END      197  /* System Versioning row_end <= row_start */
+#define HA_ERR_WRONG_ROW_TIMESTAMP      197  /* System Versioning row_end <= row_start */
 #define HA_ERR_LAST               197  /* Copy of last error nr * */
 
 /* Number of different errors */
