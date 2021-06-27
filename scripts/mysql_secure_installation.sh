@@ -284,7 +284,7 @@ get_user_and_password() {
     while [ $status_priv_user -ne 0 ]; do
     if test -z "$user"; then
         echo $echo_n "For which user do you want to specify a password (press enter for $USER): $echo_c"
-        read user
+        read user || interrupt
         echo
         if [ "x$user" = "x" ]; then
             emptyuser=1
@@ -294,10 +294,10 @@ get_user_and_password() {
         fi
     fi
     if [ -z "$password" ] && [ "$emptyuser" -eq 0 ]; then
-        stty -echo
+        stty -echo 2>/dev/null
         # If the empty user it means we are connecting with unix_socket else need password
         echo $echo_n "Enter current password for user $user (enter for none): $echo_c"
-        read password
+        read password || interrupt
         echo
         stty echo
     fi
@@ -325,18 +325,18 @@ get_user_and_password() {
     else
         password_set=0
     fi
-    read -r show_create < "$output"
+    read -r show_create < "$output" || interrupt
     echo "OK, successfully used password, moving on..."
     echo
 }
 
 set_user_password() {
-    stty -echo
+    stty -echo 2>/dev/null
     echo $echo_n "New password: $echo_c"
-    read password1
+    read password1 || interrupt
     echo
     echo $echo_n "Re-enter new password: $echo_c"
-    read password
+    read password || interrupt
     echo
     stty echo
 
@@ -351,7 +351,6 @@ set_user_password() {
         echo
         return 1
     fi
-
     esc_pass=$(basic_single_escape "$password1")
     do_query "SET PASSWORD = PASSWORD('$esc_pass')"
     if [ $? -eq 0 ]; then
@@ -360,6 +359,7 @@ set_user_password() {
         echo "Password update failed!"
         clean_and_exit
     fi
+    args="$args --password=$password"
     make_config
 
     return 0
@@ -370,11 +370,10 @@ remove_anonymous_users() {
 DROP USER /*M!100103 IF EXISTS */ ''@localhost;
 /*M!100203 EXECUTE IMMEDIATE CONCAT('DROP USER IF EXISTS \'\'@', @@hostname) */;
 EOANON
-
     if [ $? -eq 0 ]; then
         echo " ... Success!"
     else
-        echo " ... Failed!"
+        echo " ... Failed to remove anonymous users!"
         clean_and_exit
     fi
 
@@ -400,17 +399,36 @@ EOREMOTEROOT
     if [ $? -eq 0 ]; then
         echo " ... Success!"
     else
-        echo " ... Failed!"
+        echo " ... Failed to remove remote root!"
+    fi
+}
+
+check_test_database() {
+    echo " - Checking the test databases..."
+    do_query << EOCHECKTESTDB
+SELECT schema_name FROM information_schema.schemata
+WHERE  schema_name LIKE 'test';
+EOCHECKTESTDB
+    if [ $? -eq 0 ]; then
+        if grep -q "test" "$output"; then
+            return 1
+        else
+            return 0
+        fi
+    else
+        echo " ... Failed to check test database!  Not critical, keep moving..."
     fi
 }
 
 remove_test_database() {
     echo " - Dropping test database..."
-    do_query "DROP DATABASE IF EXISTS test;"
+    do_query <<-EODROPTESTDB
+DROP DATABASE IF EXISTS test;
+EODROPTESTDB
     if [ $? -eq 0 ]; then
         echo " ... Success!"
     else
-        echo " ... Failed!  Not critical, keep moving..."
+        echo " ... Failed to remove test database!  Not critical, keep moving..."
     fi
 
     echo " - Removing privileges on test database..."
@@ -418,13 +436,17 @@ remove_test_database() {
 DELIMITER &&
 CREATE OR REPLACE PROCEDURE mysql.secure_test_users()
 BEGIN
-SELECT GROUP_CONCAT(DISTINCT CONCAT(QUOTE(user),'@',QUOTE(host))) INTO @users FROM mysql.db WHERE Db='test' AND user!='';
+SELECT GROUP_CONCAT(DISTINCT CONCAT(QUOTE(user),'@',QUOTE(host))) INTO @users FROM mysql.db JOIN mysql.global_priv USING (User,Host) WHERE Db='test';
 IF @users IS NOT NULL THEN
 	EXECUTE IMMEDIATE CONCAT('REVOKE ALL ON test.* FROM ', @users);
 END IF;
-SELECT GROUP_CONCAT(DISTINCT CONCAT(QUOTE(user),'@',QUOTE(host))) INTO @users FROM mysql.db WHERE Db='test\\_%' AND user!='';
+SELECT GROUP_CONCAT(DISTINCT CONCAT(QUOTE(user),'@',QUOTE(host))) INTO @users FROM mysql.db JOIN mysql.global_priv USING (User,Host) WHERE Db='test\\_%';
 IF @users IS NOT NULL THEN
 	EXECUTE IMMEDIATE CONCAT('REVOKE ALL ON \`test\\_%\`.* FROM ', @users);
+END IF;
+DELETE FROM mysql.db WHERE User='' AND Db IN ('test', 'test\\_%');
+IF ROW_COUNT() THEN
+	FLUSH PRIVILEGES;
 END IF;
 END;
 &&
@@ -436,7 +458,7 @@ EOTEST
     if [ $? -eq 0 ]; then
         echo " ... Success!"
     else
-        echo " ... Failed!  Not critical, keep moving..."
+        echo " ... Failed to remove privileges on test database!  Not critical, keep moving..."
     fi
 
     return 0
@@ -482,14 +504,23 @@ if [ $user = root ] && [ $unix_socket_auth -ne 1 ]; then
     echo "Changing the root username obfuscates administrative users and"
     echo "helps prevent targeted attacks."
     echo
-    echo "If you change the root username you must provide a password for"
-    echo "the user."
-    echo
     echo $echo_n "Change root username to what username? (blank for no change) $echo_c"
-    read reply
+    read reply || interrupt
     if [ -n "$reply" ]; then
-        user=$reply
-        do_query "EXECUTE IMMEDIATE CONCAT('RENAME USER ', CURRENT_USER(), ' TO $user')"
+    # Check user has @ in the name
+    case "$reply" in
+      *@*)
+        user=${reply%@*}
+        host=${reply#*@}
+      ;;
+      *)
+        user=${reply}
+        host="localhost"
+      ;;
+    esac
+
+        do_query "EXECUTE IMMEDIATE CONCAT('RENAME USER ', CURRENT_USER(), ' TO \'$user\'@\'$host\'')"
+        args="$args --user=$user --host=$host"
         make_config
     fi
 fi
@@ -505,7 +536,7 @@ if [ $emptyuser -eq 0 ] && [ $unix_socket_auth -ne 1 ] && [ -z "$host" ] && [ "$
 
     while true ; do
         echo $echo_n "Enable unix_socket authentication? [Y/n] $echo_c"
-        read reply
+        read reply || interrupt
         validate_reply $reply && break
     done
 
@@ -516,7 +547,7 @@ if [ $emptyuser -eq 0 ] && [ $unix_socket_auth -ne 1 ] && [ -z "$host" ] && [ "$
         if [ $? -eq 0 ]; then
             echo "Enabled successfully!"
         else
-            echo "Failed!"
+            echo "Failed alter user!"
             clean_and_exit
         fi
     fi
@@ -538,7 +569,7 @@ while true ; do
         echo $echo_n "Set the user: $user password? [Y/n] $echo_c"
 	defsetpass=N
     fi
-    read reply
+    read reply || interrupt
     validate_reply $reply $defsetpass && break
 done
 
@@ -567,7 +598,7 @@ echo
 
 while true ; do
     echo $echo_n "Remove anonymous users? [Y/n] $echo_c"
-    read reply
+    read reply || interrupt
     validate_reply $reply && break
 done
 if [ "$reply" = "n" ]; then
@@ -588,15 +619,24 @@ echo "before moving into a production environment."
 echo
 
 while true ; do
-    echo $echo_n "Remove test database and access to it? [Y/n] $echo_c"
-    read reply
-    validate_reply $reply && break
+    test_db_exists=0
+    check_test_database
+    if [ $? -eq 1 ]; then
+        test_db_exists=1
+        echo $echo_n "Remove test database and access to it? [Y/n] $echo_c"
+        read reply || interrupt
+        validate_reply $reply && break
+    fi
+    printf " ... Success!\nTest database doesn't exist!"
+    break
 done
 
 if [ "$reply" = "n" ]; then
     echo " ... skipping."
 else
-    remove_test_database
+    if [ $test_db_exists -eq 1 ]; then
+        remove_test_database
+    fi
 fi
 echo
 
@@ -610,7 +650,7 @@ echo "ensures that someone cannot guess at the root password from the network."
 echo
 while true ; do
     echo $echo_n "Disallow root login remotely? [Y/n] $echo_c"
-    read reply
+    read reply || interrupt
     validate_reply $reply && break
 done
 if [ "$reply" = "n" ]; then
