@@ -592,10 +592,19 @@ bool flush_tables_with_read_lock(THD *thd, TABLE_LIST *all_tables)
     for (TABLE_LIST *table_list= all_tables; table_list;
          table_list= table_list->next_global)
     {
-      if (!(table_list->is_view() ||
-            table_list->table->file->ha_table_flags() & HA_CAN_EXPORT))
+      /*
+        We allow all deriveds and view here, but prohibit information_schema
+        tables (explicitly) and performance_schema tables (implicetly:
+        engine do not suport export)
+      */
+      if (table_list->is_non_derived() &&
+          (!table_list->is_base_table() ||
+           !(table_list->table->file->ha_table_flags() & HA_CAN_EXPORT)))
       {
-        my_error(ER_ILLEGAL_HA, MYF(0),table_list->table->file->table_type(),
+        my_error(ER_ILLEGAL_HA, MYF(0),
+                 (table_list->is_base_table() ?
+                  table_list->table->file->table_type():
+                  "information_schema"),
                  table_list->db.str, table_list->table_name.str);
         goto error_reset_bits;
       }
@@ -607,7 +616,8 @@ bool flush_tables_with_read_lock(THD *thd, TABLE_LIST *all_tables)
     for (auto table_list= all_tables; table_list;
          table_list= table_list->next_global)
     {
-      if (!table_list->is_view() &&
+      if (table_list->table &&
+          table_list->is_base_table() &&
           table_list->table->file->extra(HA_EXTRA_FLUSH))
         goto error_reset_bits;
     }

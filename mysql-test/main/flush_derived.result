@@ -1,0 +1,54 @@
+#
+# MDEV-25906: SIGSEGV in flush_tables_with_read_lock on FTWRL
+# or FTFE | SIGSEGV in ha_maria::extra
+#
+CREATE VIEW v0 AS SELECT 1;
+CREATE VIEW v1 AS SELECT 1 FROM (SELECT 1) AS d;
+CREATE VIEW v2 AS SELECT * FROM v1;
+CREATE VIEW v3 AS SELECT * FROM information_schema.collations;
+CREATE VIEW v4 AS SELECT * FROM performance_schema.accounts;
+CREATE VIEW v5 AS SELECT * FROM information_schema.COLUMNS;
+FLUSH TABLE v0 WITH READ LOCK;
+DROP VIEW v0;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v1 WITH READ LOCK;
+DROP VIEW v1;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v2 WITH READ LOCK;
+DROP VIEW v2;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v3 WITH READ LOCK;
+DROP VIEW v3;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v4 WITH READ LOCK;
+DROP VIEW v4;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v5 WITH READ LOCK;
+DROP VIEW v5;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v0 FOR EXPORT;
+DROP VIEW v0;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v1 FOR EXPORT;
+DROP VIEW v1;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v2 FOR EXPORT;
+DROP VIEW v2;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+UNLOCK TABLES;
+FLUSH TABLE v3 FOR EXPORT;
+ERROR HY000: Storage engine information_schema of the table `information_schema`.`collations` doesn't have this option
+FLUSH TABLE v4 FOR EXPORT;
+ERROR HY000: Storage engine PERFORMANCE_SCHEMA of the table `performance_schema`.`accounts` doesn't have this option
+FLUSH TABLE v5 FOR EXPORT;
+ERROR HY000: Storage engine information_schema of the table `information_schema`.`COLUMNS` doesn't have this option
+DROP VIEW v2, v1, v0, v3, v4, v5;
+# End of 10.6 tests

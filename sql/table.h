@@ -2733,6 +2733,11 @@ struct TABLE_LIST
             m_table_ref_version == s->get_table_ref_version());
   }
 
+  bool is_base_table()
+  {
+    return m_table_ref_type == TABLE_REF_BASE_TABLE;
+  }
+
   /**
     Record the value of metadata version of the corresponding
     table definition cache element in this parse tree node.
