@@ -2194,7 +2194,21 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
   */
   if (likely(!error) && ending_trans(thd, all))
   {
-    error= is_preparing_xa(thd) ?
+    bool is_xa_prepare= is_preparing_xa(thd);
+
+    if (!is_xa_prepare && !thd->transaction->all.is_trx_read_write())
+    {
+      /*
+        If the transaction is empty, return and do not
+        log an XA COMMIT, as there will be no XA START
+        through XA PREPARE binlogged to accompany it.
+      */
+      error= binlog_truncate_trx_cache(thd, cache_mngr, all);
+      THD_STAGE_INFO(thd, org_stage);
+      DBUG_RETURN(error);
+    }
+
+    error= is_xa_prepare ?
       binlog_commit_flush_xa_prepare(thd, all, cache_mngr) :
       binlog_commit_flush_trx_cache (thd, all, cache_mngr);
   }
@@ -2280,7 +2294,9 @@ static int binlog_rollback(handlerton *hton, THD *thd, bool all)
   }
   else if (likely(!error))
   {  
-    if (ending_trans(thd, all) && trans_cannot_safely_rollback(thd, all))
+    if (ending_trans(thd, all) &&
+        trans_cannot_safely_rollback(thd, all) &&
+        thd->transaction->all.is_trx_read_write())
       error= binlog_rollback_flush_trx_cache(thd, all, cache_mngr);
     /*
       Truncate the cache if:
