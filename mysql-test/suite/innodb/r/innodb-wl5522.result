@@ -1,5 +1,9 @@
 call mtr.add_suppression("InnoDB: Unable to import tablespace .* because it already exists.  Please DISCARD the tablespace before IMPORT\\.");
 call mtr.add_suppression("Index for table 't2' is corrupt; try to repair it");
+call mtr.add_suppression("InnoDB: Table `test`.`t2` should have 2 indexes but the tablespace has 1 indexes");
+call mtr.add_suppression("InnoDB: Skip adjustment of root pages for index `idx`.");
+call mtr.add_suppression("InnoDB: Index `idx` of table `test`.`t2` is corrupted");
+call mtr.add_suppression("InnoDB: Trying to load index `idx` for table `test`.`t2`, but the index tree has been freed!");
 FLUSH TABLES;
 CREATE TABLE t1
 (a INT AUTO_INCREMENT PRIMARY KEY,
@@ -919,3 +923,22 @@ DROP TABLE t1;
 call mtr.add_suppression("Got error -1 when reading table '.*'");
 call mtr.add_suppression("InnoDB: Error: tablespace id and flags in file '.*'");
 call mtr.add_suppression("InnoDB: The table .* doesn't have a corresponding tablespace, it was discarded");
+#
+# MDEV-26131 SEGV in ha_innobase::discard_or_import_tablespace
+#
+SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION' ;
+CREATE TABLE t1(f1 int,f2 text) ENGINE=innodb ;
+INSERT INTO t1 VALUES(1, "InnoDB");
+FLUSH TABLES t1 FOR EXPORT;
+UNLOCK TABLES;
+CREATE TABLE t2 LIKE t1;
+ALTER TABLE t2 ADD KEY idx (f2(13));
+ALTER TABLE t2 DISCARD TABLESPACE;
+ALTER TABLE t2 IMPORT TABLESPACE;
+Warnings:
+Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t2.cfg', will attempt to import without schema verification
+Warning	1817	Index corrupt: Index idx not found or corrupt, you should recreate this index.
+SELECT * FROM t2;
+f1	f2
+1	InnoDB
+DROP TABLE t1, t2;

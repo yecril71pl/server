@@ -13111,8 +13111,14 @@ ha_innobase::discard_or_import_tablespace(
 	mutex_enter(&dict_sys->mutex);
 	dict_table_close(m_prebuilt->table, TRUE, FALSE);
 	dict_table_remove_from_cache(m_prebuilt->table);
-	m_prebuilt->table = dict_table_open_on_id(id, TRUE,
-						  DICT_TABLE_OP_NORMAL);
+	m_prebuilt->table = dict_table_open_on_id_low(
+		id, DICT_ERR_IGNORE_ALL, false);
+	if (m_prebuilt->table->can_be_evicted) {
+		dict_move_to_mru(m_prebuilt->table);
+	}
+	m_prebuilt->table->acquire();
+	MONITOR_INC(MONITOR_TABLE_REFERENCE);
+
 	mutex_exit(&dict_sys->mutex);
 	if (!m_prebuilt->table) {
 		err = DB_TABLE_NOT_FOUND;
