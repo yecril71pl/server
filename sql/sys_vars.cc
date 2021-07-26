@@ -751,6 +751,8 @@ static bool check_engine_supports_temporary(sys_var *self, THD *thd, set_var *va
   res->get_value(&name);
   plugin_ref plugin= ha_resolve_by_name(thd, &name, true);
   DBUG_ASSERT(plugin);
+  if (thd->lex->plugins.elements == 0)
+    return 0;
   handlerton *hton= plugin_hton(plugin);
   DBUG_ASSERT(hton);
   if (ha_check_storage_engine_flag(hton, HTON_TEMPORARY_NOT_SUPPORTED))
