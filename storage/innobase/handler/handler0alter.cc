@@ -8086,6 +8086,7 @@ err_exit:
 
 	const ha_table_option_struct& alt_opt=
 		*ha_alter_info->create_info->option_struct;
+	ha_innobase_inplace_ctx *ctx = NULL;
 
 	if (!(ha_alter_info->handler_flags & INNOBASE_ALTER_DATA)
 	    || ((ha_alter_info->handler_flags & ~(INNOBASE_INPLACE_IGNORE
@@ -8100,7 +8101,6 @@ err_exit:
 						  m_user_thd);
 		}
 
-		ha_innobase_inplace_ctx *ctx = NULL;
 		if (heap) {
 			ctx = new ha_innobase_inplace_ctx(
 					m_prebuilt,
