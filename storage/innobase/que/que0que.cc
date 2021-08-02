@@ -435,7 +435,7 @@ que_graph_free(
 		sym_tab_free_private(graph->sym_tab);
 	}
 
-	if (graph->info && graph->info->graph_owns_us) {
+	if (graph->info) {
 		pars_info_free(graph->info);
 	}
 
