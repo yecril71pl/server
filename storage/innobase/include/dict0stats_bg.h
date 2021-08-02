@@ -50,10 +50,10 @@ dict_stats_recalc_pool_del(
 /** Yield the data dictionary latch when waiting
 for the background thread to stop accessing a table.
 @param trx	transaction holding the data dictionary locks */
-#define DICT_BG_YIELD(trx)	do {	\
-	row_mysql_unlock_data_dictionary(trx);	\
+#define DICT_BG_YIELD	do {	\
+	dict_sys.unlock();	\
 	std::this_thread::sleep_for(std::chrono::milliseconds(250));	\
-	row_mysql_lock_data_dictionary(trx);	\
+	dict_sys.lock(SRW_LOCK_CALL); \
 } while (0)
 
 /*****************************************************************//**
@@ -86,12 +86,8 @@ Wait until background stats thread has stopped using the specified table.
 The background stats thread is guaranteed not to start using the specified
 table after this function returns and before the caller releases
 dict_sys.latch. */
-void
-dict_stats_wait_bg_to_stop_using_table(
-/*===================================*/
-	dict_table_t*	table,	/*!< in/out: table */
-	trx_t*		trx);	/*!< in/out: transaction to use for
-				unlocking/locking the data dict */
+void dict_stats_wait_bg_to_stop_using_table(dict_table_t *table);
+
 /*****************************************************************//**
 Initialize global variables needed for the operation of dict_stats_thread().
 Must be called before dict_stats task is started. */

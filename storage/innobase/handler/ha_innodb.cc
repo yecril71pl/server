@@ -13677,7 +13677,7 @@ int ha_innobase::truncate()
 	}
 
 	row_mysql_lock_data_dictionary(trx);
-	dict_stats_wait_bg_to_stop_using_table(ib_table, trx);
+	dict_stats_wait_bg_to_stop_using_table(ib_table);
 	/* Wait for purge threads to stop using the table. */
 	for (uint n = 15; ib_table->get_ref_count() > 1; ) {
 		if (!--n) {
@@ -14337,13 +14337,11 @@ ha_innobase::info_low(
 			if (dict_stats_is_persistent_enabled(ib_table)) {
 
 				if (is_analyze) {
-					row_mysql_lock_data_dictionary(
-						m_prebuilt->trx);
+					dict_sys.lock(SRW_LOCK_CALL);
 					dict_stats_recalc_pool_del(ib_table);
 					dict_stats_wait_bg_to_stop_using_table(
-						ib_table, m_prebuilt->trx);
-					row_mysql_unlock_data_dictionary(
-						m_prebuilt->trx);
+						ib_table);
+					dict_sys.unlock();
 					opt = DICT_STATS_RECALC_PERSISTENT;
 				} else {
 					/* This is e.g. 'SHOW INDEXES', fetch

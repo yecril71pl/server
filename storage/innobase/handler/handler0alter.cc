@@ -6320,7 +6320,7 @@ acquire_lock:
 	at least until checking ut_ad(user_table->n_ref_count == 1) below.
 	XXX what may happen if bg stats opens the table after we
 	have unlocked data dictionary below? */
-	dict_stats_wait_bg_to_stop_using_table(user_table, ctx->trx);
+	dict_stats_wait_bg_to_stop_using_table(user_table);
 	ut_d(stats_wait = true);
 
 	online_retry_drop_indexes_low(ctx->new_table, ctx->trx);
@@ -10957,7 +10957,7 @@ lock_fail:
 			break;
 		}
 
-		DICT_BG_YIELD(trx);
+		DICT_BG_YIELD;
 	}
 
 	/* Apply the changes to the data dictionary tables, for all

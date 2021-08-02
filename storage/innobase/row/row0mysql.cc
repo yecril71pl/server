@@ -2586,7 +2586,7 @@ rollback:
   }
 
   row_mysql_lock_data_dictionary(trx);
-  dict_stats_wait_bg_to_stop_using_table(table, trx);
+  dict_stats_wait_bg_to_stop_using_table(table);
 
   trx->op_info = "discarding tablespace";
   trx->dict_operation= true;

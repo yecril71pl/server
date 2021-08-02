@@ -281,16 +281,10 @@ Wait until background stats thread has stopped using the specified table.
 The background stats thread is guaranteed not to start using the specified
 table after this function returns and before the caller releases
 dict_sys.latch. */
-void
-dict_stats_wait_bg_to_stop_using_table(
-/*===================================*/
-	dict_table_t*	table,	/*!< in/out: table */
-	trx_t*		trx)	/*!< in/out: transaction to use for
-				unlocking/locking the data dict */
+void dict_stats_wait_bg_to_stop_using_table(dict_table_t *table)
 {
-	while (!dict_stats_stop_bg(table)) {
-		DICT_BG_YIELD(trx);
-	}
+  while (!dict_stats_stop_bg(table))
+    DICT_BG_YIELD;
 }
 
 /*****************************************************************//**
