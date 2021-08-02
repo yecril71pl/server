@@ -605,7 +605,7 @@ trx_resurrect_table_locks(
 			    p.first, FALSE, DICT_TABLE_OP_LOAD_TABLESPACE)) {
 			if (!table->is_readable()) {
 				dict_sys.lock(SRW_LOCK_CALL);
-				dict_table_close(table, TRUE, FALSE);
+				table->release();
 				dict_sys.remove(table);
 				dict_sys.unlock();
 				continue;
@@ -622,7 +622,7 @@ trx_resurrect_table_locks(
 				 "resurrect " << ib::hex(trx->id)
 				 << " lock on " << table->name);
 
-			dict_table_close(table, FALSE, FALSE);
+			table->release();
 		}
 	}
 }

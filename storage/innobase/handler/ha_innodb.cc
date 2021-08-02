@@ -5858,7 +5858,7 @@ ha_innobase::open(const char* name, int, uint)
 		or force recovery can still use it, but not others. */
 		ib_table->file_unreadable = true;
 		ib_table->corrupted = true;
-		dict_table_close(ib_table, FALSE, FALSE);
+		ib_table->release();
 		set_my_errno(ENOENT);
 		DBUG_RETURN(HA_ERR_CRASHED_ON_USAGE);
 	}
@@ -5905,7 +5905,7 @@ ha_innobase::open(const char* name, int, uint)
 				ret_err = HA_ERR_DECRYPTION_FAILED;
 			}
 
-			dict_table_close(ib_table, FALSE, FALSE);
+			ib_table->release();
 			DBUG_RETURN(ret_err);
 		}
 	}
@@ -13016,7 +13016,7 @@ create_table_info_t::create_table_update_dict()
 	/* Load server stopword into FTS cache */
 	if (m_flags2 & DICT_TF2_FTS) {
 		if (!innobase_fts_load_stopword(innobase_table, NULL, m_thd)) {
-			dict_table_close(innobase_table, FALSE, FALSE);
+			innobase_table->release();
 			DBUG_RETURN(-1);
 		}
 
@@ -13282,7 +13282,7 @@ ha_innobase::discard_or_import_tablespace(
 	table_id_t id = m_prebuilt->table->id;
 	ut_ad(id);
 	dict_sys.lock(SRW_LOCK_CALL);
-	dict_table_close(m_prebuilt->table, TRUE, FALSE);
+	m_prebuilt->table->release();
 	dict_sys.remove(m_prebuilt->table);
 	m_prebuilt->table = dict_table_open_on_id(id, TRUE,
 						  DICT_TABLE_OP_NORMAL);
