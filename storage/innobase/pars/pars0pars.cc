@@ -2059,16 +2059,6 @@ pars_info_create(void)
 }
 
 /****************************************************************//**
-Free info struct and everything it contains. */
-void
-pars_info_free(
-/*===========*/
-	pars_info_t*	info)	/*!< in, own: info struct */
-{
-	mem_heap_free(info->heap);
-}
-
-/****************************************************************//**
 Add bound literal. */
 void
 pars_info_add_literal(
