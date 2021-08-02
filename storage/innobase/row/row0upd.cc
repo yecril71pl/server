@@ -340,8 +340,8 @@ wsrep_row_upd_check_foreign_constraints(
 				TRUE, foreign, table, entry, thr);
 
 			if (foreign->referenced_table) {
-				if (opened == TRUE) {
-					dict_table_close(foreign->referenced_table, FALSE, FALSE);
+				if (opened) {
+					dict_table_close(foreign->referenced_table);
 					opened = FALSE;
 				}
 			}

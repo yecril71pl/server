@@ -3197,7 +3197,7 @@ static bool innobase_query_caching_table_check(
 
 	bool allow = innobase_query_caching_table_check_low(table, trx);
 
-	dict_table_close(table, FALSE, FALSE);
+	dict_table_close(table);
 
 	if (allow) {
 		/* If the isolation level is high, assign a read view for the
