@@ -152,6 +152,9 @@ dict_table_open_on_id(table_id_t table_id, bool dict_locked,
                       MDL_ticket **mdl= nullptr)
   MY_ATTRIBUTE((warn_unused_result));
 
+/** Decrement the count of open handles */
+void dict_table_close(dict_table_t *table);
+
 /** Decrements the count of open handles of a table.
 @param[in,out]	table		table
 @param[in]	dict_locked	data dictionary locked

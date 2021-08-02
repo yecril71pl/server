@@ -299,6 +299,25 @@ dict_table_try_drop_aborted_and_unlock(
 	}
 }
 
+/** Decrement the count of open handles */
+void dict_table_close(dict_table_t *table)
+{
+  if (dict_stats_is_persistent_enabled(table) &&
+      strchr(table->name.m_name, '/'))
+  {
+    dict_sys.freeze(SRW_LOCK_CALL);
+    if (table->release())
+    {
+      table->stats_mutex_lock();
+      dict_stats_deinit(table);
+      table->stats_mutex_unlock();
+    }
+    dict_sys.unfreeze();
+  }
+  else
+    table->release();
+}
+
 /** Decrements the count of open handles of a table.
 @param[in,out]	table		table
 @param[in]	dict_locked	data dictionary locked

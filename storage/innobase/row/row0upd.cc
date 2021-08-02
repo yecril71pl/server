@@ -250,8 +250,8 @@ row_upd_check_references_constraints(
 			err = row_ins_check_foreign_constraint(
 				FALSE, foreign, table, entry, thr);
 
-			if (ref_table != NULL) {
-				dict_table_close(ref_table, FALSE, FALSE);
+			if (ref_table) {
+				dict_table_close(ref_table);
 			}
 
 			if (err != DB_SUCCESS) {

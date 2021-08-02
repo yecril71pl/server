@@ -1940,7 +1940,7 @@ static int innodb_check_version(handlerton *hton, const char *path,
   {
     const trx_id_t trx_id= table->def_trx_id;
     DBUG_ASSERT(trx_id <= create_id);
-    dict_table_close(table, false, false);
+    dict_table_close(table);
     DBUG_PRINT("info", ("create_id: %llu  trx_id: %llu", create_id, trx_id));
     DBUG_RETURN(create_id != trx_id);
   }
@@ -13067,7 +13067,7 @@ create_table_info_t::create_table_update_dict()
 
 	innobase_parse_hint_from_comment(m_thd, innobase_table, m_form->s);
 
-	dict_table_close(innobase_table, FALSE, FALSE);
+	dict_table_close(innobase_table);
 	DBUG_RETURN(0);
 }
 
@@ -17105,7 +17105,7 @@ static int innodb_ft_aux_table_validate(THD *thd, st_mysql_sys_var*,
 			    table_name, FALSE, TRUE, DICT_ERR_IGNORE_NONE)) {
 			const table_id_t id = dict_table_has_fts_index(table)
 				? table->id : 0;
-			dict_table_close(table, FALSE, FALSE);
+			dict_table_close(table);
 			if (id) {
 				innodb_ft_aux_table_id = id;
 				if (table_name == buf) {
