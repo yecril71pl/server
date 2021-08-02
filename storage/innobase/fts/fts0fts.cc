@@ -2799,7 +2799,6 @@ fts_delete(
 {
 	que_t*		graph;
 	fts_table_t	fts_table;
-	dberr_t		error = DB_SUCCESS;
 	doc_id_t	write_doc_id;
 	dict_table_t*	table = ftt->table;
 	doc_id_t	doc_id = row->doc_id;
@@ -2810,7 +2809,7 @@ fts_delete(
 	/* we do not index Documents whose Doc ID value is 0 */
 	if (doc_id == FTS_NULL_DOC_ID) {
 		ut_ad(!DICT_TF2_FLAG_IS_SET(table, DICT_TF2_FTS_HAS_DOC_ID));
-		return(error);
+		return DB_SUCCESS;
 	}
 
 	ut_a(row->state == FTS_DELETE || row->state == FTS_MODIFY);
@@ -2845,27 +2844,20 @@ fts_delete(
 	}
 
 	/* Note the deleted document for OPTIMIZE to purge. */
-	if (error == DB_SUCCESS) {
-		char	table_name[MAX_FULL_NAME_LEN];
+	char	table_name[MAX_FULL_NAME_LEN];
 
-		trx->op_info = "adding doc id to FTS DELETED";
+	trx->op_info = "adding doc id to FTS DELETED";
 
-		fts_table.suffix = "DELETED";
+	fts_table.suffix = "DELETED";
 
-		fts_get_table_name(&fts_table, table_name);
-		pars_info_bind_id(info, true, "deleted", table_name);
+	fts_get_table_name(&fts_table, table_name);
+	pars_info_bind_id(info, true, "deleted", table_name);
 
-		graph = fts_parse_sql(
-			&fts_table,
-			info,
-			"BEGIN INSERT INTO $deleted VALUES (:doc_id);");
+	graph = fts_parse_sql(&fts_table, info,
+			      "BEGIN INSERT INTO $deleted VALUES (:doc_id);");
 
-		error = fts_eval_sql(trx, graph);
-
-		fts_que_graph_free(graph);
-	} else {
-		pars_info_free(info);
-	}
+	dberr_t error = fts_eval_sql(trx, graph);
+	fts_que_graph_free(graph);
 
 	/* Increment the total deleted count, this is used to calculate the
 	number of documents indexed. */
