@@ -4206,12 +4206,7 @@ void dict_set_encrypted_by_space(const fil_space_t* space)
 /**********************************************************************//**
 Flags an index corrupted both in the data dictionary cache
 and in the SYS_INDEXES */
-void
-dict_set_corrupted(
-/*===============*/
-	dict_index_t*	index,	/*!< in/out: index */
-	trx_t*		trx,	/*!< in/out: transaction */
-	const char*	ctx)	/*!< in: context */
+void dict_set_corrupted(dict_index_t *index, const char *ctx, bool dict_locked)
 {
 	mem_heap_t*	heap;
 	mtr_t		mtr;
@@ -4221,10 +4216,9 @@ dict_set_corrupted(
 	byte*		buf;
 	const char*	status;
 	btr_cur_t	cursor;
-	bool		locked	= RW_X_LATCH == trx->dict_operation_lock_mode;
 
-	if (!locked) {
-		row_mysql_lock_data_dictionary(trx);
+	if (!dict_locked) {
+		dict_sys.lock(SRW_LOCK_CALL);
 	}
 
 	ut_ad(dict_sys.locked());
@@ -4294,14 +4288,13 @@ fail:
 	}
 
 	mtr_commit(&mtr);
-	mem_heap_empty(heap);
+	mem_heap_free(heap);
 	ib::error() << status << " corruption of " << index->name
 		<< " in table " << index->table->name << " in " << ctx;
-	mem_heap_free(heap);
 
 func_exit:
-	if (!locked) {
-		row_mysql_unlock_data_dictionary(trx);
+	if (!dict_locked) {
+		dict_sys.unlock();
 	}
 }
 

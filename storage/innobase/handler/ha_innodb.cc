@@ -14838,8 +14838,7 @@ ha_innobase::check(
 		index = dict_table_get_first_index(m_prebuilt->table);
 
 		if (!index->is_corrupted()) {
-			dict_set_corrupted(
-				index, m_prebuilt->trx, "CHECK TABLE");
+			dict_set_corrupted(index, "CHECK TABLE", false);
 		}
 
 		push_warning_printf(m_user_thd,
@@ -14920,7 +14919,9 @@ ha_innobase::check(
 			"dict_set_index_corrupted",
 			if (!index->is_primary()) {
 				m_prebuilt->index_usable = FALSE;
-				dict_set_corrupted(index, m_prebuilt->trx, "dict_set_index_corrupted");
+				dict_set_corrupted(index,
+						   "dict_set_index_corrupted",
+						   false);
 			});
 
 		if (UNIV_UNLIKELY(!m_prebuilt->index_usable)) {
@@ -14982,8 +14983,8 @@ ha_innobase::check(
 				" index %s is corrupted.",
 				index->name());
 			is_ok = false;
-			dict_set_corrupted(
-				index, m_prebuilt->trx, "CHECK TABLE-check index");
+			dict_set_corrupted(index, "CHECK TABLE-check index",
+					   false);
 		}
 
 
@@ -14998,9 +14999,8 @@ ha_innobase::check(
 				" entries, should be " ULINTPF ".",
 				index->name(), n_rows, n_rows_in_table);
 			is_ok = false;
-			dict_set_corrupted(
-				index, m_prebuilt->trx,
-				"CHECK TABLE; Wrong count");
+			dict_set_corrupted(index, "CHECK TABLE; Wrong count",
+					   false);
 		}
 	}
 

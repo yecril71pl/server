@@ -1700,16 +1700,13 @@ dict_table_is_corrupted(
 	const dict_table_t*	table)	/*!< in: table */
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
 
-/**********************************************************************//**
-Flags an index and table corrupted both in the data dictionary cache
-and in the system table SYS_INDEXES. */
-void
-dict_set_corrupted(
-/*===============*/
-	dict_index_t*	index,	/*!< in/out: index */
-	trx_t*		trx,	/*!< in/out: transaction */
-	const char*	ctx)	/*!< in: context */
-	ATTRIBUTE_COLD __attribute__((nonnull));
+/** Flag an index and table corrupted both in the data dictionary cache
+and in the system table SYS_INDEXES.
+@param index       index to be flagged as corrupted
+@param ctx         context (for error log reporting)
+@param dict_locked whether dict_sys.latch is held in exclusive mode */
+void dict_set_corrupted(dict_index_t *index, const char *ctx, bool dict_locked)
+  ATTRIBUTE_COLD __attribute__((nonnull));
 
 /** Flags an index corrupted in the data dictionary cache only. This
 is used mostly to mark a corrupted index when index's own dictionary

@@ -1287,7 +1287,7 @@ row_insert_for_mysql(
 		/* Mark the table corrupted for the clustered index */
 		dict_index_t*	index = dict_table_get_first_index(table);
 		ut_ad(dict_index_is_clust(index));
-		dict_set_corrupted(index, trx, "INSERT TABLE"); });
+		dict_set_corrupted(index, "INSERT TABLE", false); });
 
 	if (dict_table_is_corrupted(table)) {
 
