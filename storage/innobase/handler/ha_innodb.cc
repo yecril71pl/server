@@ -1936,7 +1936,7 @@ static int innodb_check_version(handlerton *hton, const char *path,
   char norm_path[FN_REFLEN];
   normalize_table_name(norm_path, path);
 
-  if (dict_table_t *table= dict_table_open_on_name(norm_path, false, false,
+  if (dict_table_t *table= dict_table_open_on_name(norm_path, false,
                                                    DICT_ERR_IGNORE_NONE))
   {
     const trx_id_t trx_id= table->def_trx_id;
@@ -3187,7 +3187,7 @@ static bool innobase_query_caching_table_check(
 	const char*	norm_name)
 {
 	dict_table_t*   table = dict_table_open_on_name(
-		norm_name, FALSE, FALSE, DICT_ERR_IGNORE_FK_NOKEY);
+		norm_name, false, DICT_ERR_IGNORE_FK_NOKEY);
 
 	if (table == NULL) {
 		return false;
@@ -6109,8 +6109,9 @@ ha_innobase::open_dict_table(
 	dict_err_ignore_t	ignore_err)
 {
 	DBUG_ENTER("ha_innobase::open_dict_table");
-	dict_table_t*	ib_table = dict_table_open_on_name(norm_name, FALSE,
-							   TRUE, ignore_err);
+	/* FIXME: try_drop_aborted */
+	dict_table_t*	ib_table = dict_table_open_on_name(norm_name, false,
+							   ignore_err);
 
 	if (NULL == ib_table && is_partition) {
 		/* MySQL partition engine hard codes the file name
@@ -6147,9 +6148,9 @@ ha_innobase::open_dict_table(
 			normalize_table_name_c_low(
 				par_case_name, table_name, false);
 #endif
+			/* FIXME: try_drop_aborted */
 			ib_table = dict_table_open_on_name(
-				par_case_name, FALSE, TRUE,
-				ignore_err);
+				par_case_name, false, ignore_err);
 		}
 
 		if (ib_table != NULL) {
@@ -12990,7 +12991,7 @@ create_table_info_t::create_table_update_dict()
 	DBUG_ENTER("create_table_update_dict");
 
 	innobase_table = dict_table_open_on_name(
-		m_table_name, FALSE, FALSE, DICT_ERR_IGNORE_NONE);
+		m_table_name, false, DICT_ERR_IGNORE_NONE);
 
 	DBUG_ASSERT(innobase_table != 0);
 	if (innobase_table->fts != NULL) {
@@ -13726,7 +13727,7 @@ int ha_innobase::truncate()
 		if (err) {
 reload:
 			m_prebuilt->table = dict_table_open_on_name(
-				name, false, false, DICT_ERR_IGNORE_NONE);
+				name, false, DICT_ERR_IGNORE_NONE);
 			m_prebuilt->table->def_trx_id = def_trx_id;
 		} else {
 			row_prebuilt_t* prebuilt = m_prebuilt;
@@ -15163,7 +15164,7 @@ get_foreign_key_info(
 
 		dict_table_t*	ref_table = dict_table_open_on_name(
 			foreign->referenced_table_name_lookup,
-			TRUE, FALSE, DICT_ERR_IGNORE_NONE);
+			true, DICT_ERR_IGNORE_NONE);
 
 		if (ref_table == NULL) {
 
@@ -15176,8 +15177,7 @@ get_foreign_key_info(
 					<< foreign->foreign_table_name;
  			}
 		} else {
-
-			dict_table_close(ref_table, TRUE, FALSE);
+			dict_table_close(ref_table, true);
 		}
 	}
 
@@ -17099,7 +17099,7 @@ static int innodb_ft_aux_table_validate(THD *thd, st_mysql_sys_var*,
 
 	if (const char* table_name = value->val_str(value, buf, &len)) {
 		if (dict_table_t* table = dict_table_open_on_name(
-			    table_name, FALSE, TRUE, DICT_ERR_IGNORE_NONE)) {
+			    table_name, false, DICT_ERR_IGNORE_NONE)) {
 			const table_id_t id = dict_table_has_fts_index(table)
 				? table->id : 0;
 			dict_table_close(table);

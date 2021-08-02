@@ -143,7 +143,7 @@ removed:
 		mtr.commit();
 close_and_exit:
 		if (table) {
-			dict_table_close(table, true, false,
+			dict_table_close(table, true,
 					 node->purge_thd, mdl_ticket);
 			dict_sys.unlock();
 		}
@@ -192,7 +192,7 @@ close_and_exit:
 		mtr.commit();
 
 		if (table) {
-			dict_table_close(table, true, false,
+			dict_table_close(table, true,
 					 node->purge_thd, mdl_ticket);
 			dict_sys.unlock();
 			table = nullptr;

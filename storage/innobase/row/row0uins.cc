@@ -272,7 +272,7 @@ func_exit:
 	btr_pcur_commit_specify_mtr(&node->pcur, &mtr);
 
 	if (UNIV_LIKELY_NULL(table)) {
-		dict_table_close(table, dict_locked, false,
+		dict_table_close(table, dict_locked,
 				 node->trx->mysql_thd, mdl_ticket);
 	}
 
@@ -486,7 +486,7 @@ close_table:
 		would probably be better to just drop all temporary
 		tables (and temporary undo log records) of the current
 		connection, instead of doing this rollback. */
-		dict_table_close(node->table, dict_locked, FALSE);
+		dict_table_close(node->table, dict_locked);
 		node->table = NULL;
 		return false;
 	} else {
@@ -683,7 +683,7 @@ row_undo_ins(
 		break;
 	}
 
-	dict_table_close(node->table, dict_locked, FALSE);
+	dict_table_close(node->table, dict_locked);
 
 	node->table = NULL;
 

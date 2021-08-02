@@ -157,9 +157,7 @@ void dict_table_close(dict_table_t *table);
 
 /** Decrements the count of open handles of a table.
 @param[in,out]	table		table
-@param[in]	dict_locked	data dictionary locked
-@param[in]	try_drop	try to drop any orphan indexes after
-				an aborted online index creation
+@param[in]	dict_locked	whether dict_sys.latch is being held
 @param[in]	thd		thread to release MDL
 @param[in]	mdl		metadata lock or NULL if the thread is a
 				foreground one. */
@@ -167,7 +165,6 @@ void
 dict_table_close(
 	dict_table_t*	table,
 	bool		dict_locked,
-	bool		try_drop,
 	THD*		thd = NULL,
 	MDL_ticket*	mdl = NULL);
 
@@ -470,16 +467,14 @@ NOTE! This is a high-level function to be used mainly from outside the
 'dict' directory. Inside this directory dict_table_get_low
 is usually the appropriate function.
 @param[in] table_name Table name
-@param[in] dict_locked TRUE=data dictionary locked
-@param[in] try_drop TRUE=try to drop any orphan indexes after
-				an aborted online index creation
+@param[in] dict_locked whether dict_sys.latch is being held exclusively
 @param[in] ignore_err error to be ignored when loading the table
-@return table, NULL if does not exist */
+@return table
+@retval nullptr if does not exist */
 dict_table_t*
 dict_table_open_on_name(
 	const char*		table_name,
-	ibool			dict_locked,
-	ibool			try_drop,
+	bool			dict_locked,
 	dict_err_ignore_t	ignore_err)
 	MY_ATTRIBUTE((warn_unused_result));
 

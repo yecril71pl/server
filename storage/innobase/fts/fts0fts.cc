@@ -1369,7 +1369,7 @@ fts_cache_add_doc(
 @retval DB_FAIL     if the table did not exist */
 static dberr_t fts_drop_table(trx_t *trx, const char *table_name, bool rename)
 {
-  if (dict_table_t *table= dict_table_open_on_name(table_name, TRUE, FALSE,
+  if (dict_table_t *table= dict_table_open_on_name(table_name, true,
                                                    DICT_ERR_IGNORE_DROP))
   {
     table->release();
@@ -1501,7 +1501,7 @@ static dberr_t fts_lock_table(trx_t *trx, const char *table_name)
 {
   ut_ad(purge_sys.must_wait_FTS());
 
-  if (dict_table_t *table= dict_table_open_on_name(table_name, false, false,
+  if (dict_table_t *table= dict_table_open_on_name(table_name, false,
                                                    DICT_ERR_IGNORE_DROP))
   {
     dberr_t err= lock_table_for_trx(table, trx, LOCK_X);

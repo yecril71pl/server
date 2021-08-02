@@ -2782,7 +2782,7 @@ row_rename_table_for_mysql(
 	old_is_tmp = dict_table_t::is_temporary_name(old_name);
 	new_is_tmp = dict_table_t::is_temporary_name(new_name);
 
-	table = dict_table_open_on_name(old_name, true, false,
+	table = dict_table_open_on_name(old_name, true,
 					DICT_ERR_IGNORE_FK_NOKEY);
 
 	/* We look for pattern #P# to see if the table is partitioned
@@ -2827,7 +2827,7 @@ row_rename_table_for_mysql(
 		normalize_table_name_c_low(
 			par_case_name, old_name, FALSE);
 #endif
-		table = dict_table_open_on_name(par_case_name, true, false,
+		table = dict_table_open_on_name(par_case_name, true,
 						DICT_ERR_IGNORE_FK_NOKEY);
 	}
 

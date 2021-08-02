@@ -383,7 +383,7 @@ no_table:
 
 	dict_sys.lock(SRW_LOCK_CALL);
 	table->stats_bg_flag = BG_STAT_NONE;
-	dict_table_close(table, TRUE, FALSE);
+	dict_table_close(table, true);
 	dict_sys.unlock();
 
 	return ret;
