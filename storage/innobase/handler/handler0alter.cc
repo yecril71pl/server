@@ -11032,7 +11032,9 @@ fail:
 			ut_ad(ctx->new_table->get_ref_count() == 1);
 			const bool own = m_prebuilt == ctx->prebuilt;
 			trx_t* const user_trx = m_prebuilt->trx;
-			row_prebuilt_free(ctx->prebuilt, true);
+			ctx->prebuilt->table->release();
+			ctx->prebuilt->table = nullptr;
+			row_prebuilt_free(ctx->prebuilt);
 			/* Rebuild the prebuilt object. */
 			ctx->prebuilt = row_create_prebuilt(
 				ctx->new_table, altered_table->s->reclength);

@@ -924,13 +924,8 @@ row_create_prebuilt(
 	DBUG_RETURN(prebuilt);
 }
 
-/********************************************************************//**
-Free a prebuilt struct for a MySQL table handle. */
-void
-row_prebuilt_free(
-/*==============*/
-	row_prebuilt_t*	prebuilt,	/*!< in, own: prebuilt struct */
-	ibool		dict_locked)	/*!< in: TRUE=data dictionary locked */
+/** Free a prebuilt struct for a TABLE handle. */
+void row_prebuilt_free(row_prebuilt_t *prebuilt)
 {
 	DBUG_ENTER("row_prebuilt_free");
 
@@ -990,7 +985,7 @@ row_prebuilt_free(
 		rtr_clean_rtr_info(prebuilt->rtr_info, true);
 	}
 	if (prebuilt->table) {
-		dict_table_close(prebuilt->table, dict_locked, FALSE);
+		dict_table_close(prebuilt->table, false, false);
 	}
 
 	mem_heap_free(prebuilt->heap);

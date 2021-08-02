@@ -182,13 +182,8 @@ row_create_prebuilt(
 	dict_table_t*	table,		/*!< in: Innobase table handle */
 	ulint		mysql_row_len);	/*!< in: length in bytes of a row in
 					the MySQL format */
-/********************************************************************//**
-Free a prebuilt struct for a MySQL table handle. */
-void
-row_prebuilt_free(
-/*==============*/
-	row_prebuilt_t*	prebuilt,	/*!< in, own: prebuilt struct */
-	ibool		dict_locked);	/*!< in: TRUE=data dictionary locked */
+/** Free a prebuilt struct for a TABLE handle. */
+void row_prebuilt_free(row_prebuilt_t *prebuilt);
 /*********************************************************************//**
 Updates the transaction pointers in query graphs stored in the prebuilt
 struct. */

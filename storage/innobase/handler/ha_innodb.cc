@@ -6219,7 +6219,7 @@ ha_innobase::close()
 {
 	DBUG_ENTER("ha_innobase::close");
 
-	row_prebuilt_free(m_prebuilt, FALSE);
+	row_prebuilt_free(m_prebuilt);
 
 	if (m_upd_buf != NULL) {
 		ut_ad(m_upd_buf_size != 0);
@@ -13627,7 +13627,7 @@ int ha_innobase::truncate()
 		info.options|= HA_LEX_CREATE_TMP_TABLE;
 		btr_drop_temporary_table(*ib_table);
 		m_prebuilt->table = nullptr;
-		row_prebuilt_free(m_prebuilt, false);
+		row_prebuilt_free(m_prebuilt);
 		m_prebuilt = nullptr;
 		my_free(m_upd_buf);
 		m_upd_buf = nullptr;
@@ -13742,7 +13742,7 @@ reload:
 				m_prebuilt->stored_select_lock_type
 					= stored_lock;
 				m_prebuilt->table->update_time = update_time;
-				row_prebuilt_free(prebuilt, false);
+				row_prebuilt_free(prebuilt);
 				my_free(upd_buf);
 			} else {
 				/* Revert to the old table. */
