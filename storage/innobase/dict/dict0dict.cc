@@ -1960,7 +1960,6 @@ void dict_sys_t::remove(dict_table_t* table, bool lru, bool keep)
 		trx_t* trx = trx_create();
 
 		ut_ad(dict_sys.locked());
-		/* Mimic row_mysql_lock_data_dictionary(). */
 		trx->dict_operation_lock_mode = RW_X_LATCH;
 
 		trx->dict_operation = true;

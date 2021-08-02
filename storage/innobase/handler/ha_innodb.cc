@@ -1339,7 +1339,7 @@ static void innodb_drop_database(handlerton*, char *path)
 
   trx_t *trx= innobase_trx_allocate(current_thd);
 retry:
-  row_mysql_lock_data_dictionary(trx);
+  dict_sys.lock(SRW_LOCK_CALL);
 
   for (auto i= dict_sys.table_id_hash.n_cells; i--; )
   {
@@ -1350,7 +1350,7 @@ retry:
       if (!strncmp(table->name.m_name, namebuf, len) &&
           !dict_stats_stop_bg(table))
       {
-        row_mysql_unlock_data_dictionary(trx);
+        dict_sys.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
         goto retry;
       }
@@ -1385,6 +1385,7 @@ retry:
     }
   }
 
+  trx->dict_operation_lock_mode= RW_X_LATCH;
   trx_start_for_ddl(trx);
   uint errors= 0;
   char db[NAME_LEN + 1];
@@ -14919,9 +14920,7 @@ ha_innobase::check(
 			"dict_set_index_corrupted",
 			if (!index->is_primary()) {
 				m_prebuilt->index_usable = FALSE;
-				// row_mysql_lock_data_dictionary(m_prebuilt->trx);
 				dict_set_corrupted(index, m_prebuilt->trx, "dict_set_index_corrupted");
-				// row_mysql_unlock_data_dictionary(m_prebuilt->trx);
 			});
 
 		if (UNIV_UNLIKELY(!m_prebuilt->index_usable)) {
