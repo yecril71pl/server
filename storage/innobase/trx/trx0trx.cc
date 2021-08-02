@@ -1199,18 +1199,17 @@ void trx_t::evict_table(table_id_t table_id, bool reset_only)
 {
 	ut_ad(in_rollback);
 
-	dict_table_t* table = dict_table_open_on_id(
-		table_id, true, DICT_TABLE_OP_OPEN_ONLY_IF_CACHED);
+	dict_table_t* table = dict_sys.find_table(table_id);
 	if (!table) {
 		return;
 	}
 
 	table->def_trx_id = 0;
 
-	if (!table->release()) {
+	if (auto ref_count = table->get_ref_count()) {
 		/* This must be a DDL operation that is being rolled
 		back in an active connection. */
-		ut_a(table->get_ref_count() == 1);
+		ut_a(ref_count == 1);
 		ut_ad(!is_recovered);
 		ut_ad(mysql_thd);
 		return;
