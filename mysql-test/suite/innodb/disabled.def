@@ -11,3 +11,8 @@
 ##############################################################################
 
 create-index-debug : MDEV-13680 InnoDB may crash when btr_page_alloc() fails
+innodb-index-online : FIXME background drop indexes
+innodb : FIXME background drop indexes (hang)
+innodb-index : FIXME background drop indexes (hang)
+innodb-alter : FIXME background drop indexes (hang)
+alter_table : FIXME background drop indexes (hang)

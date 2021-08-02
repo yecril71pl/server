@@ -2085,10 +2085,6 @@ public:
 	/** TRUE if table is corrupted. */
 	unsigned				corrupted:1;
 
-	/** TRUE if some indexes should be dropped after ONLINE_INDEX_ABORTED
-	or ONLINE_INDEX_ABORTED_DROPPED. */
-	unsigned				drop_aborted:1;
-
 	/** Array of column descriptions. */
 	dict_col_t*				cols;
 

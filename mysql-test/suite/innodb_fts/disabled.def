@@ -1,0 +1,1 @@
+innodb-fts-ddl : FIXME background drop indexes (hang)

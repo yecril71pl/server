@@ -225,7 +225,6 @@ dml_system_reads	dml	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	sta
 dml_system_inserts	dml	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	status_counter	Number of system rows inserted
 dml_system_deletes	dml	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	status_counter	Number of system rows deleted
 dml_system_updates	dml	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	status_counter	Number of system rows updated
-ddl_background_drop_indexes	ddl	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	counter	Number of indexes waiting to be dropped after failed index creation
 ddl_online_create_index	ddl	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	counter	Number of indexes being created online
 ddl_pending_alter_table	ddl	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	counter	Number of ALTER TABLE, CREATE INDEX, DROP INDEX in progress
 ddl_sort_file_alter_table	ddl	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	counter	Number of sort files created during alter table

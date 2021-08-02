@@ -3882,7 +3882,6 @@ row_merge_drop_indexes(
 					dict_index_set_online_status(
 						index, ONLINE_INDEX_ABORTED);
 					index->type |= DICT_CORRUPT;
-					table->drop_aborted = TRUE;
 					goto drop_aborted;
 				}
 				continue;
@@ -3894,8 +3893,6 @@ row_merge_drop_indexes(
 				index->lock.x_unlock();
 
 				DEBUG_SYNC_C("merge_drop_index_after_abort");
-				/* covered by dict_sys.latch */
-				MONITOR_INC(MONITOR_BACKGROUND_DROP_INDEX);
 				/* fall through */
 			case ONLINE_INDEX_ABORTED:
 				/* Drop the index tree from the
@@ -3907,7 +3904,6 @@ row_merge_drop_indexes(
 				dict_index_set_online_status(
 					index, ONLINE_INDEX_ABORTED_DROPPED);
 				index->lock.x_unlock();
-				table->drop_aborted = TRUE;
 				continue;
 			}
 			ut_error;
@@ -3944,33 +3940,11 @@ row_merge_drop_indexes(
 				fts_drop_index(table, index, trx);
 			}
 
-			switch (dict_index_get_online_status(index)) {
-			case ONLINE_INDEX_CREATION:
-				/* This state should only be possible
-				when prepare_inplace_alter_table() fails
-				after invoking row_merge_create_index().
-				In inplace_alter_table(),
-				row_merge_build_indexes()
-				should never leave the index in this state.
-				It would invoke row_log_abort_sec() on
-				failure. */
-			case ONLINE_INDEX_COMPLETE:
-				/* In these cases, we are able to drop
-				the index straight. The DROP INDEX was
-				never deferred. */
-				break;
-			case ONLINE_INDEX_ABORTED:
-			case ONLINE_INDEX_ABORTED_DROPPED:
-				/* covered by dict_sys.latch */
-				MONITOR_DEC(MONITOR_BACKGROUND_DROP_INDEX);
-			}
-
 			dict_index_remove_from_cache(table, index);
 		}
 	}
 
 	row_merge_drop_fulltext_indexes(trx, table);
-	table->drop_aborted = FALSE;
 	ut_d(dict_table_check_for_dup_indexes(table, CHECK_ALL_COMPLETE));
 }
 
@@ -4788,12 +4762,11 @@ func_exit:
 				row_log_abort_sec(indexes[i]);
 				indexes[i]->type |= DICT_CORRUPT;
 				indexes[i]->lock.x_unlock();
-				new_table->drop_aborted = TRUE;
 				/* fall through */
 			case ONLINE_INDEX_ABORTED_DROPPED:
 			case ONLINE_INDEX_ABORTED:
-				MONITOR_ATOMIC_INC(
-					MONITOR_BACKGROUND_DROP_INDEX);
+				/* FIXME: drop from dictionary! */
+				break;
 			}
 		}
 	}

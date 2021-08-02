@@ -4064,7 +4064,6 @@ row_log_apply(
 		dict_set_corrupted_index_cache_only(index) here,
 		because the index is not "public" yet. */
 		index->type |= DICT_CORRUPT;
-		index->table->drop_aborted = TRUE;
 
 		dict_index_set_online_status(index, ONLINE_INDEX_ABORTED);
 	} else {

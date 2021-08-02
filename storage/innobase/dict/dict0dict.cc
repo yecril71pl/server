@@ -67,7 +67,6 @@ Created 1/8/1996 Heikki Tuuri
 #include "row0upd.h"
 #include "srv0mon.h"
 #include "srv0start.h"
-#include "trx0undo.h"
 
 #include <vector>
 #include <algorithm>
@@ -1851,22 +1850,6 @@ void dict_sys_t::remove(dict_table_t* table, bool lru, bool keep)
 		UT_LIST_REMOVE(table_LRU, table);
 	} else {
 		UT_LIST_REMOVE(table_non_LRU, table);
-	}
-
-	if (lru && table->drop_aborted) {
-		/* When evicting the table definition,
-		drop the orphan indexes from the data dictionary
-		and free the index pages. */
-		trx_t* trx = trx_create();
-
-		ut_ad(dict_sys.locked());
-		trx->dict_operation_lock_mode = RW_X_LATCH;
-
-		trx->dict_operation = true;
-		row_merge_drop_indexes_dict(trx, table->id);
-		trx_commit_for_mysql(trx);
-		trx->dict_operation_lock_mode = 0;
-		trx->free();
 	}
 
 	/* Free virtual column template if any */

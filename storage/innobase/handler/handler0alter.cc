@@ -4062,29 +4062,28 @@ bool too_big_key_part_length(size_t max_field_len, const KEY& key)
 	return false;
 }
 
-/********************************************************************//**
-Drop any indexes that we were not able to free previously due to
-open table handles. */
-static
-void
-online_retry_drop_indexes_low(
-/*==========================*/
-	dict_table_t*	table,	/*!< in/out: table */
-	trx_t*		trx)	/*!< in/out: transaction */
+/** Free any stubs for aborted ADD INDEX. */
+static void online_retry_drop_indexes_low(dict_table_t *table)
 {
-	ut_ad(dict_sys.locked());
-	ut_ad(trx->dict_operation_lock_mode == RW_X_LATCH);
-	ut_ad(trx->dict_operation);
+  ut_ad(dict_sys.locked());
 
-	/* We can have table->n_ref_count > 1, because other threads
-	may have prebuilt->table pointing to the table. However, these
-	other threads should be between statements, waiting for the
-	next statement to execute, or for a meta-data lock. */
-	ut_ad(table->get_ref_count() >= 1);
+  /* We can have table->n_ref_count > 1, because other threads may
+  have row_prebuilt_t::table pointing to the table. However, these
+  other threads should be between statements, waiting for the next
+  statement to execute, or waiting for a meta-data lock. */
+  ut_ad(table->get_ref_count() >= 1);
 
-	if (table->drop_aborted) {
-		row_merge_drop_indexes(trx, table, true);
-	}
+  for (dict_index_t *index= dict_table_get_first_index(table);
+       index; index= dict_table_get_next_index(index))
+  {
+    if (!index->is_committed())
+    {
+      ut_ad(!index->is_clust());
+      dict_index_remove_from_cache(table, index);
+    }
+  }
+
+  ut_d(dict_table_check_for_dup_indexes(table, CHECK_ALL_COMPLETE));
 }
 
 /** After commit, unlock the data dictionary and close any deleted files.
@@ -4110,62 +4109,11 @@ static void commit_unlock_and_unlink(trx_t *trx)
 /********************************************************************//**
 Drop any indexes that we were not able to free previously due to
 open table handles. */
-static MY_ATTRIBUTE((nonnull))
-void
-online_retry_drop_indexes(
-/*======================*/
-	dict_table_t*	table,		/*!< in/out: table */
-	THD*		user_thd)	/*!< in/out: MySQL connection */
+static void online_retry_drop_indexes(dict_table_t *table)
 {
-	if (table->drop_aborted) {
-		trx_t*	trx = innobase_trx_allocate(user_thd);
-
-		trx_start_for_ddl(trx);
-
-		row_mysql_lock_data_dictionary(trx);
-		online_retry_drop_indexes_low(table, trx);
-		commit_unlock_and_unlink(trx);
-		trx->free();
-	}
-
-	ut_d(dict_sys.freeze(SRW_LOCK_CALL));
-	ut_d(dict_table_check_for_dup_indexes(table, CHECK_ALL_COMPLETE));
-	ut_d(dict_sys.unfreeze());
-	ut_ad(!table->drop_aborted);
-}
-
-/********************************************************************//**
-Commit a dictionary transaction and drop any indexes that we were not
-able to free previously due to open table handles. */
-static MY_ATTRIBUTE((nonnull))
-void
-online_retry_drop_indexes_with_trx(
-/*===============================*/
-	dict_table_t*	table,	/*!< in/out: table */
-	trx_t*		trx)	/*!< in/out: transaction */
-{
-	ut_ad(trx_state_eq(trx, TRX_STATE_NOT_STARTED));
-
-	ut_ad(trx->dict_operation_lock_mode == RW_X_LATCH);
-
-	/* Now that the dictionary is being locked, check if we can
-	drop any incompletely created indexes that may have been left
-	behind in rollback_inplace_alter_table() earlier. */
-	if (table->drop_aborted) {
-		trx_start_for_ddl(trx);
-
-		online_retry_drop_indexes_low(table, trx);
-		std::vector<pfs_os_file_t> deleted;
-		trx->commit(deleted);
-		/* FIXME: We are holding the data dictionary latch here
-		while waiting for the files to be actually deleted.
-		However, we should never have any deleted files here,
-		because they would be related to ADD FULLTEXT INDEX,
-		and that operation is never supported online. */
-		for (pfs_os_file_t d : deleted) {
-			os_file_close(d);
-		}
-	}
+  dict_sys.lock(SRW_LOCK_CALL);
+  online_retry_drop_indexes_low(table);
+  dict_sys.unlock();
 }
 
 /** Determines if InnoDB is dropping a foreign key constraint.
@@ -6323,10 +6271,7 @@ acquire_lock:
 	dict_stats_wait_bg_to_stop_using_table(user_table);
 	ut_d(stats_wait = true);
 
-	online_retry_drop_indexes_low(ctx->new_table, ctx->trx);
-
-	ut_d(dict_table_check_for_dup_indexes(
-		     ctx->new_table, CHECK_ABORTED_OK));
+	online_retry_drop_indexes_low(ctx->new_table);
 
 	DBUG_EXECUTE_IF("innodb_OOM_prepare_inplace_alter",
 			error = DB_OUT_OF_MEMORY;
@@ -6345,8 +6290,7 @@ new_clustered_failed:
 
 			ut_ad(user_table->get_ref_count() == 1);
 
-			online_retry_drop_indexes_with_trx(
-				user_table, ctx->trx);
+			online_retry_drop_indexes(user_table);
 
 			if (ctx->need_rebuild()) {
 				if (ctx->new_table) {
@@ -7186,16 +7130,7 @@ error_handled:
 	holding dict_sys.latch X-latch. */
 	ut_ad(!stats_wait || ctx->online || user_table->get_ref_count() == 1);
 
-	if (new_clustered) {
-		online_retry_drop_indexes_with_trx(user_table, ctx->trx);
-	} else {
-		trx_start_for_ddl(ctx->trx);
-		row_merge_drop_indexes(ctx->trx, user_table, true);
-		trx_commit_for_mysql(ctx->trx);
-	}
-
-	ut_d(dict_table_check_for_dup_indexes(user_table, CHECK_ALL_COMPLETE));
-	ut_ad(!user_table->drop_aborted);
+	online_retry_drop_indexes_low(user_table);
 
 err_exit:
 	/* Clear the to_be_dropped flag in the data dictionary cache. */
@@ -7557,9 +7492,7 @@ ha_innobase::prepare_inplace_alter_table(
 		/* Nothing to do */
 		DBUG_ASSERT(m_prebuilt->trx->dict_operation_lock_mode == 0);
 		if (ha_alter_info->handler_flags & ~INNOBASE_INPLACE_IGNORE) {
-
-			online_retry_drop_indexes(
-				m_prebuilt->table, m_user_thd);
+			online_retry_drop_indexes(m_prebuilt->table);
 
 		}
 		DBUG_RETURN(false);
@@ -7643,9 +7576,7 @@ ha_innobase::prepare_inplace_alter_table(
 err_exit_no_heap:
 		DBUG_ASSERT(m_prebuilt->trx->dict_operation_lock_mode == 0);
 		if (ha_alter_info->handler_flags & ~INNOBASE_INPLACE_IGNORE) {
-
-			online_retry_drop_indexes(
-				m_prebuilt->table, m_user_thd);
+			online_retry_drop_indexes(m_prebuilt->table);
 		}
 		DBUG_RETURN(true);
 	}
@@ -8098,8 +8029,7 @@ err_exit:
 
 		DBUG_ASSERT(!m_prebuilt->trx->dict_operation_lock_mode);
 		if (ha_alter_info->handler_flags & ~INNOBASE_INPLACE_IGNORE) {
-			online_retry_drop_indexes(m_prebuilt->table,
-						  m_user_thd);
+			online_retry_drop_indexes(m_prebuilt->table);
 		}
 
 		if (heap) {

@@ -289,8 +289,6 @@ SELECT sf.name, sf.pos FROM INFORMATION_SCHEMA.INNODB_SYS_INDEXES si
 INNER JOIN INFORMATION_SCHEMA.INNODB_SYS_FIELDS sf
 ON si.index_id = sf.index_id WHERE si.name = 'c2e';
 
-# ddl_background_drop_indexes = 1 here, because the incomplete index c2e still
-# exists in the InnoDB data dictionary cache.
 eval $innodb_metrics_select;
 
 connection default;
