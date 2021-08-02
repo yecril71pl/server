@@ -906,8 +906,6 @@ dict_table_open_on_id(table_id_t table_id, bool dict_locked,
 		dict_sys.lock(SRW_LOCK_CALL);
 	}
 
-	ut_ad(dict_sys.locked());
-
 	dict_table_t* table = dict_table_open_on_id_low(
 		table_id,
 		table_op == DICT_TABLE_OP_LOAD_TABLESPACE
