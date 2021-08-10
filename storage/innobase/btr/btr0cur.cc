@@ -2907,6 +2907,32 @@ btr_cur_insert_if_possible(
 	return(rec);
 }
 
+struct lock_rec_insert_check_and_lock_functor
+{
+  lock_rec_insert_check_and_lock_functor(ulint flags, dict_index_t *index,
+                                         que_thr_t *thr, mtr_t *mtr,
+                                         ibool *inherit, dberr_t &err)
+      : flags(flags), index(index), thr(thr), mtr(mtr), inherit(inherit),
+        err(err)
+  {
+  }
+
+  bool operator()(rec_t *rec, buf_block_t *block, bool first_rec) const
+  {
+    err= lock_rec_insert_check_and_lock(flags, rec, block, index, thr, mtr,
+                                        inherit, first_rec);
+    return err == DB_SUCCESS || err == DB_SUCCESS_LOCKED_REC;
+  }
+
+private:
+  ulint flags;
+  dict_index_t *index;
+  que_thr_t *thr;
+  mtr_t *mtr;
+  ibool *inherit;
+  dberr_t &err;
+};
+
 /*************************************************************//**
 For an insert, checks the locks and does the undo logging if desired.
 @return DB_SUCCESS, DB_WAIT_LOCK, DB_FAIL, or error number */
@@ -2979,77 +3005,10 @@ btr_cur_ins_lock_and_undo(
 				trx->wsrep_UK_scan= true;
 			}
 #endif /* WITH_WSREP */
-                        buf_block_t *old_block= btr_cur_get_block(cursor);
-                        ut_ad(old_block);
-                        rec_t *cur_rec= rec;
-                        buf_block_t *cur_block= old_block;
-                        ibool comp= dict_table_is_comp(index->table);
-                        bool first_rec= true;
-                        ulint latch_mode;
-                        while ((err= lock_rec_insert_check_and_lock(
-                                    flags, cur_rec, cur_block, index, thr, mtr,
-                                    inherit, first_rec)) == DB_SUCCESS ||
-                               err == DB_SUCCESS_LOCKED_REC)
-                        {
-                          first_rec= false;
-                          const rec_t *next_rec=
-                              page_rec_get_next_const(cur_rec);
-                          if (!page_rec_is_supremum(next_rec) &&
-                              !rec_get_deleted_flag(next_rec, comp))
-                            break;
-                        get_next_rec:
-                          if (!page_cur_is_after_last(
-                                  btr_cur_get_page_cur(cursor)))
-                            page_cur_move_to_next(
-                                btr_cur_get_page_cur(cursor));
-                          else
-                          {
-                            ulint next_page_no=
-                                btr_page_get_next(btr_cur_get_page(cursor));
-                            if (next_page_no == FIL_NULL)
-                              break;
-                            buf_block_t *block= btr_cur_get_block(cursor);
-                            latch_mode=
-                                mtr->have_x_latch(page_id_t(
-                                    block->page.id.space(), next_page_no))
-                                    ? BTR_MODIFY_LEAF
-                                    : BTR_SEARCH_LEAF;
-                            block= btr_block_get(
-                                page_id_t(block->page.id.space(),
-                                          next_page_no),
-                                block->page.size, latch_mode, index, mtr);
-                            if (cur_block != old_block &&
-                                latch_mode == BTR_SEARCH_LEAF)
-                              btr_leaf_page_release(btr_cur_get_block(cursor),
-                                                    latch_mode, mtr);
-                            page_cur_set_before_first(
-                                block, btr_cur_get_page_cur(cursor));
-                            page_cur_move_to_next(
-                                btr_cur_get_page_cur(cursor));
-
-                            ut_ad(!page_cur_is_after_last(
-                                btr_cur_get_page_cur(cursor)));
-                          }
-
-                          cur_rec= btr_cur_get_rec(cursor);
-                          cur_block= btr_cur_get_block(cursor);
-                          if (page_rec_is_supremum(cur_rec))
-                            goto get_next_rec;
-                        }
-                        /* Restore cursor position and release last latched
-                         block if necessary */
-                        page_cur_t *page_cur= btr_cur_get_page_cur(cursor);
-                        ut_ad(page_cur);
-                        if (cur_block != old_block)
-                        {
-                          ut_ad(latch_mode == BTR_MODIFY_LEAF ||
-                                latch_mode == BTR_SEARCH_LEAF);
-                          if (latch_mode == BTR_SEARCH_LEAF)
-                            btr_leaf_page_release(btr_cur_get_block(cursor),
-                                                  latch_mode, mtr);
-                          page_cur->block= old_block;
-                        }
-                        page_cur->rec= rec;
+                        for_each_delete_marked(
+                            btr_cur_get_page_cur(cursor), index, mtr,
+                            lock_rec_insert_check_and_lock_functor(
+                                flags, index, thr, mtr, inherit, err));
 #ifdef WITH_WSREP
 			trx->wsrep_UK_scan= false;
 #endif /* WITH_WSREP */
@@ -4924,6 +4883,14 @@ btr_cur_parse_del_mark_set_clust_rec(
 	return(ptr);
 }
 
+struct gap_lock_inherit_functor {
+  bool operator()(rec_t *rec, buf_block_t *block, bool first_rec) const
+  {
+    lock_update_delete(block, rec, false, false, false);
+    return true;
+  }
+};
+
 /***********************************************************//**
 Marks a clustered index record deleted. Writes an undo log record to
 undo log on this delete marking. Writes in the trx id field the id
@@ -4933,8 +4900,7 @@ undo log record created.
 dberr_t
 btr_cur_del_mark_set_clust_rec(
 /*===========================*/
-	buf_block_t*	block,	/*!< in/out: buffer block of the record */
-	rec_t*		rec,	/*!< in/out: record */
+	btr_cur_t*	btr_cur,	/*!< in/out: buffer block of the record */
 	dict_index_t*	index,	/*!< in: clustered index of the record */
 	const rec_offs*	offsets,/*!< in: rec_get_offsets(rec) */
 	que_thr_t*	thr,	/*!< in: query thread */
@@ -4946,6 +4912,8 @@ btr_cur_del_mark_set_clust_rec(
 	dberr_t		err;
 	page_zip_des_t*	page_zip;
 	trx_t*		trx;
+	buf_block_t *block = btr_cur_get_block(btr_cur);
+	rec_t *rec = btr_cur_get_rec(btr_cur);
 
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(rec_offs_validate(rec, index, offsets));
@@ -4985,6 +4953,9 @@ btr_cur_del_mark_set_clust_rec(
 	page_zip = buf_block_get_page_zip(block);
 
 	btr_rec_set_deleted_flag(rec, page_zip, TRUE);
+
+	for_each_delete_marked(btr_cur_get_page_cur(btr_cur), index, mtr,
+	    gap_lock_inherit_functor());
 
 	trx = thr_get_trx(thr);
 
@@ -5125,6 +5096,10 @@ btr_cur_del_mark_set_sec_rec(
 	hash index does not depend on it. */
 	btr_rec_set_deleted_flag(rec, buf_block_get_page_zip(block), val);
 
+	if (val)
+	  for_each_delete_marked(btr_cur_get_page_cur(cursor), cursor->index,
+	      mtr, gap_lock_inherit_functor());
+
 	btr_cur_del_mark_set_sec_rec_log(rec, val, mtr);
 
 	return(DB_SUCCESS);
@@ -5136,7 +5111,8 @@ function is only used by the insert buffer merge mechanism. */
 void
 btr_cur_set_deleted_flag_for_ibuf(
 /*==============================*/
-	rec_t*		rec,		/*!< in/out: record */
+	page_cur_t*		page_cur,		/*!< in/out: record */
+	const dict_index_t* index,
 	page_zip_des_t*	page_zip,	/*!< in/out: compressed page
 					corresponding to rec, or NULL
 					when the tablespace is
@@ -5144,6 +5120,13 @@ btr_cur_set_deleted_flag_for_ibuf(
 	ibool		val,		/*!< in: value to set */
 	mtr_t*		mtr)		/*!< in/out: mini-transaction */
 {
+
+	rec_t *rec = page_cur_get_rec(page_cur);
+/*
+	if (val)
+	  for_each_delete_marked(page_cur, index, mtr,
+	    gap_lock_inherit_functor());
+*/
 	/* We do not need to reserve search latch, as the page
 	has just been read to the buffer pool and there cannot be
 	a hash index to it.  Besides, the delete-mark flag is being
@@ -5251,7 +5234,8 @@ ibool btr_cur_optimistic_delete(btr_cur_t *cursor, ulint flags, mtr_t *mtr,
 		page_t*		page	= buf_block_get_frame(block);
 		page_zip_des_t*	page_zip= buf_block_get_page_zip(block);
 
-		lock_update_delete(block, rec, from_purge, convert_lock_to_gap);
+		lock_update_delete(block, rec, from_purge, convert_lock_to_gap,
+		    true);
 
 		btr_search_update_hash_on_delete(cursor);
 
@@ -5400,7 +5384,7 @@ ibool btr_cur_pessimistic_delete(dberr_t *err, ibool has_reserved_extents,
 			& REC_INFO_MIN_REC_FLAG));
 		if (flags == 0) {
 			lock_update_delete(block, rec, from_purge,
-                            convert_lock_to_gap);
+                            convert_lock_to_gap, true);
 		}
 	}
 

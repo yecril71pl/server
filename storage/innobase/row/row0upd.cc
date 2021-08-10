@@ -2755,7 +2755,7 @@ row_upd_clust_rec_by_insert(
 		}
 
 		err = btr_cur_del_mark_set_clust_rec(
-			btr_cur_get_block(btr_cur), rec, index, offsets,
+			btr_cur, index, offsets,
 			thr, node->row, mtr);
 		if (err != DB_SUCCESS) {
 			goto err_exit;
@@ -2984,7 +2984,6 @@ row_upd_del_mark_clust_rec(
 {
 	btr_pcur_t*	pcur;
 	btr_cur_t*	btr_cur;
-	rec_t*		rec;
 	trx_t*		trx = thr_get_trx(thr);
 
 	ut_ad(dict_index_is_clust(index));
@@ -3005,10 +3004,8 @@ row_upd_del_mark_clust_rec(
 	/* Mark the clustered index record deleted; we do not have to check
 	locks, because we assume that we have an x-lock on the record */
 
-	rec = btr_cur_get_rec(btr_cur);
-
 	dberr_t err = btr_cur_del_mark_set_clust_rec(
-		btr_cur_get_block(btr_cur), rec,
+		btr_cur,
 		index, offsets, thr, node->row, mtr);
 
 	if (err != DB_SUCCESS) {

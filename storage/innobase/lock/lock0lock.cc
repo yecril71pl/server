@@ -3487,12 +3487,12 @@ inline bool lock_rec_has_gap_or_ordinary(const buf_block_t *block,
         !lock_rec_get_insert_intention(lock) &&
         (heap_no == PAGE_HEAP_NO_SUPREMUM || !lock_rec_get_rec_not_gap(lock)))
     {
-      gap = true;
+      gap= true;
       if (!check_locking_read)
         break;
       if (lock->trx->locking_read_is_active(block->page.id, heap_no))
       {
-        locking_read = true;
+        locking_read= true;
         break;
       }
     }
@@ -3507,7 +3507,8 @@ inline bool lock_rec_has_gap_or_ordinary(const buf_block_t *block,
 otherwise
 */
 void lock_update_delete(const buf_block_t *block, const rec_t *rec,
-                        bool from_purge, bool convert_lock_to_gap)
+                        bool from_purge, bool convert_lock_to_gap,
+                        bool release_lock)
 {
 	const page_t*	page = block->frame;
 	ulint		heap_no;
@@ -3542,7 +3543,8 @@ void lock_update_delete(const buf_block_t *block, const rec_t *rec,
 #endif // UNIV_DEBUG
 	/* Reset the lock bits on rec and release waiting transactions */
 
-	lock_rec_reset_and_release_wait(block, heap_no);
+	if (release_lock)
+	  lock_rec_reset_and_release_wait(block, heap_no);
 
 	lock_mutex_exit();
 }

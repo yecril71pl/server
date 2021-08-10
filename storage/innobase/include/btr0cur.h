@@ -445,8 +445,7 @@ undo log record created.
 dberr_t
 btr_cur_del_mark_set_clust_rec(
 /*===========================*/
-	buf_block_t*	block,	/*!< in/out: buffer block of the record */
-	rec_t*		rec,	/*!< in/out: record */
+	btr_cur_t*	btr_cur,	/*!< in/out: buffer block of the record */
 	dict_index_t*	index,	/*!< in: clustered index of the record */
 	const rec_offs*	offsets,/*!< in: rec_get_offsets(rec) */
 	que_thr_t*	thr,	/*!< in: query thread */
@@ -767,7 +766,8 @@ function is only used by the insert buffer merge mechanism. */
 void
 btr_cur_set_deleted_flag_for_ibuf(
 /*==============================*/
-	rec_t*		rec,		/*!< in/out: record */
+	page_cur_t*		page_cur,		/*!< in/out: record */
+	const dict_index_t* index,
 	page_zip_des_t*	page_zip,	/*!< in/out: compressed page
 					corresponding to rec, or NULL
 					when the tablespace is uncompressed */

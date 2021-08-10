@@ -3932,7 +3932,7 @@ dump:
 			Clear the delete-mark, like we did before
 			Bug #56680 was fixed. */
 			btr_cur_set_deleted_flag_for_ibuf(
-				rec, page_zip, FALSE, mtr);
+				&page_cur, index, page_zip, FALSE, mtr);
 			goto updated_in_place;
 		}
 
@@ -4051,8 +4051,8 @@ ibuf_set_del_mark(
 		if (UNIV_LIKELY
 		    (!rec_get_deleted_flag(
 			    rec, dict_table_is_comp(index->table)))) {
-			btr_cur_set_deleted_flag_for_ibuf(rec, page_zip,
-							  TRUE, mtr);
+			btr_cur_set_deleted_flag_for_ibuf(&page_cur, index,
+			    page_zip, TRUE, mtr);
 		}
 	} else {
 		const page_t*		page
@@ -4139,7 +4139,7 @@ ibuf_delete(
 			return;
 		}
 
-		lock_update_delete(block, rec, false, true);
+		lock_update_delete(block, rec, false, true, true);
 
 		if (!page_zip) {
 			max_ins_size
@@ -4275,7 +4275,7 @@ ibuf_delete_rec(
 	in case the server crashes before the pessimistic delete is
 	made persistent. */
 	btr_cur_set_deleted_flag_for_ibuf(
-		btr_pcur_get_rec(pcur), NULL, TRUE, mtr);
+		btr_pcur_get_page_cur(pcur), pcur->index(), NULL, TRUE, mtr);
 
 	btr_pcur_store_position(pcur, mtr);
 	ibuf_btr_pcur_commit_specify_mtr(pcur, mtr);
@@ -4616,7 +4616,8 @@ loop:
 				of deleting the change buffer record. */
 
 				btr_cur_set_deleted_flag_for_ibuf(
-					btr_pcur_get_rec(&pcur), NULL,
+					btr_pcur_get_page_cur(&pcur),
+					pcur.index(), NULL,
 					TRUE, &mtr);
 
 				btr_pcur_store_position(&pcur, &mtr);
