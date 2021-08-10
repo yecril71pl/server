@@ -2999,7 +2999,6 @@ lock_update_insert(
 inline bool lock_rec_has_gap_or_ordinary(hash_cell_t &cell,
                                          const page_id_t page_id,
                                          ulint heap_no, const rec_t *rec,
-                                         const rec_offs *offsets,
                                          dict_index_t *index,
                                          bool check_locking_read)
 {
@@ -3033,8 +3032,9 @@ inline bool lock_rec_has_gap_or_ordinary(hash_cell_t &cell,
 otherwise
 */
 void lock_update_delete(const buf_block_t *block, const rec_t *rec,
-                        rec_offs *offsets, dict_index_t *index,
-                        bool from_purge, bool convert_lock_to_gap)
+                        dict_index_t *index,
+                        bool from_purge, bool convert_lock_to_gap,
+                        bool release_lock)
 {
 	const page_t*	page = block->frame;
 	ulint		heap_no;
@@ -3064,14 +3064,15 @@ void lock_update_delete(const buf_block_t *block, const rec_t *rec,
 	      next_heap_no, heap_no, convert_lock_to_gap);
 #ifdef UNIV_DEBUG
 	else if (lock_rec_has_gap_or_ordinary(g.cell(), id, heap_no, rec,
-	      offsets, index, true)) {
+	      index, true)) {
 			ut_a(rec_get_deleted_flag(rec, page_is_comp(page)));
 			ut_a(lock_rec_has_gap_or_ordinary(g.cell(), id,
-				next_heap_no, rec, offsets, index, false));
+				next_heap_no, rec, index, false));
 	}
 #endif // UNIV_DEBUG
 	/* Reset the lock bits on rec and release waiting transactions */
-	lock_rec_reset_and_release_wait(g.cell(), id, heap_no);
+	if (release_lock)
+	  lock_rec_reset_and_release_wait(g.cell(), id, heap_no);
 }
 
 /*********************************************************************//**

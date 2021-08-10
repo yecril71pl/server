@@ -77,3 +77,69 @@ lock_rec_create(
 		type_mode, block->page.id(), block->frame, heap_no,
 		index, trx, caller_owns_trx_mutex);
 }
+
+
+struct gap_lock_inherit_functor
+{
+  gap_lock_inherit_functor(dict_index_t *index) : index(index) {}
+
+  bool operator()(rec_t *rec, buf_block_t *block, bool first_rec) const
+  {
+    lock_update_delete(block, rec, index, false, false, false);
+    return true;
+  }
+private:
+  dict_index_t *index;
+};
+
+template <typename Functor>
+void for_each_delete_marked(page_cur_t *page_cur, const dict_index_t *index,
+                               mtr_t *mtr, const Functor &functor)
+{
+  rec_t *old_rec= page_cur_get_rec(page_cur);
+  buf_block_t *old_block= page_cur_get_block(page_cur);
+
+  rec_t *cur_rec= old_rec;
+  buf_block_t *cur_block= old_block;
+  bool comp= dict_table_is_comp(index->table);
+  bool first_rec= true;
+  ulint latch_mode;
+  while (functor(cur_rec, cur_block, first_rec))
+  {
+    first_rec= false;
+  get_next_rec:
+    if (!page_cur_is_after_last(page_cur))
+      page_cur_move_to_next(page_cur);
+    else
+    {
+      uint32_t next_page_no= btr_page_get_next(page_cur_get_page(page_cur));
+      if (next_page_no == FIL_NULL)
+        break;
+      buf_block_t *block= page_cur_get_block(page_cur);
+      latch_mode=
+          mtr->have_x_latch(page_id_t(block->page.id().space(), next_page_no))
+              ? BTR_MODIFY_LEAF
+              : BTR_SEARCH_LEAF;
+      block= btr_block_get(*index, next_page_no, latch_mode, false, mtr);
+      if (cur_block != old_block && latch_mode == BTR_SEARCH_LEAF)
+        btr_leaf_page_release(page_cur_get_block(page_cur), latch_mode, mtr);
+      page_cur_set_before_first(block, page_cur);
+      page_cur_move_to_next(page_cur);
+      ut_ad(!page_cur_is_after_last(page_cur));
+    }
+    cur_rec= page_cur_get_rec(page_cur);
+    cur_block= page_cur_get_block(page_cur);
+    if (page_rec_is_supremum(cur_rec))
+      goto get_next_rec;
+    if (!page_rec_is_infimum(cur_rec) && !rec_get_deleted_flag(cur_rec, comp))
+      break;
+  }
+  if (cur_block != old_block)
+  {
+    ut_ad(latch_mode == BTR_MODIFY_LEAF || latch_mode == BTR_SEARCH_LEAF);
+    if (latch_mode == BTR_SEARCH_LEAF)
+      btr_leaf_page_release(page_cur_get_block(page_cur), latch_mode, mtr);
+    page_cur->block= old_block;
+  }
+  page_cur->rec= old_rec;
+}

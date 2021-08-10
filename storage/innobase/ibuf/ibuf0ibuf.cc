@@ -3958,7 +3958,8 @@ ibuf_delete(
 			return;
 		}
 
-		lock_update_delete(block, rec, offsets, index, false, true);
+		lock_update_delete(block, rec, index, false, true,
+		    true);
 
 		if (!page_zip) {
 			max_ins_size

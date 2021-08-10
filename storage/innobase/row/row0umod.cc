@@ -626,6 +626,8 @@ row_undo_mod_del_mark_or_remove_sec_low(
 	    || row_vers_old_has_index_entry(
 		    false, btr_pcur_get_rec(&node->pcur),
 		    &mtr_vers, index, entry, 0, 0)) {
+		/* Temporary table records should not be locked, so there
+		is no need to inherit gap locks here */
 		btr_rec_set_deleted<true>(btr_cur_get_block(btr_cur),
 					  btr_cur_get_rec(btr_cur), &mtr);
 	} else {

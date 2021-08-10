@@ -3280,84 +3280,20 @@ btr_cur_ins_lock_and_undo(
 				trx->wsrep = 3;
 			}
 #endif /* WITH_WSREP */
-                        buf_block_t *old_block= btr_cur_get_block(cursor);
-                        ut_ad(old_block);
-                        rec_t *cur_rec= rec;
-                        buf_block_t *cur_block= old_block;
-                        bool comp= dict_table_is_comp(index->table);
-                        bool first_rec= true;
-                        ulint latch_mode;
                         dberr_t err;
-                        while (!(err= lock_rec_insert_check_and_lock(
-                                     cur_rec, cur_block, index, thr, mtr,
-                                     inherit, first_rec)))
-                        {
-                          first_rec= false;
-                          /*
-                          const rec_t *next_rec=
-                              page_rec_get_next_const(cur_rec);
-                          if (!page_rec_is_supremum(next_rec) &&
-                              !rec_get_deleted_flag(next_rec, comp))
-                            break;
-                          */
-                          get_next_rec:
-                          if (!page_cur_is_after_last(
-                                  btr_cur_get_page_cur(cursor)))
-                            page_cur_move_to_next(
-                                btr_cur_get_page_cur(cursor));
-                          else
-                          {
-                            uint32_t next_page_no=
-                                btr_page_get_next(btr_cur_get_page(cursor));
-                            if (next_page_no == FIL_NULL)
-                              break;
-                            buf_block_t *block= btr_cur_get_block(cursor);
-                            latch_mode=
-                                mtr->have_x_latch(page_id_t(
-                                    block->page.id().space(), next_page_no))
-                                    ? BTR_MODIFY_LEAF
-                                    : BTR_SEARCH_LEAF;
-                            block= btr_block_get(
-                                *index, next_page_no, latch_mode, false, mtr);
-                            if (cur_block != old_block &&
-                                latch_mode == BTR_SEARCH_LEAF)
-                              btr_leaf_page_release(btr_cur_get_block(cursor),
-                                                    latch_mode, mtr);
-                            page_cur_set_before_first(
-                                block, btr_cur_get_page_cur(cursor));
-                            page_cur_move_to_next(
-                                btr_cur_get_page_cur(cursor));
-
-                            ut_ad(!page_cur_is_after_last(
-                                btr_cur_get_page_cur(cursor)));
-                          }
-                          cur_rec= btr_cur_get_rec(cursor);
-                          cur_block= btr_cur_get_block(cursor);
-                          if (page_rec_is_supremum(cur_rec))
-                            goto get_next_rec;
-                          if (!page_rec_is_infimum(cur_rec) &&
-                              !rec_get_deleted_flag(cur_rec, comp))
-                            break;
-                        }
-                        /* Restore cursor position and release last latched
-                         block if necessary */
-                        page_cur_t *page_cur= btr_cur_get_page_cur(cursor);
-                        ut_ad(page_cur);
-                        if (cur_block != old_block)
-                        {
-                          ut_ad(latch_mode == BTR_MODIFY_LEAF ||
-                                latch_mode == BTR_SEARCH_LEAF);
-                          if (latch_mode == BTR_SEARCH_LEAF)
-                            btr_leaf_page_release(btr_cur_get_block(cursor),
-                                                  latch_mode, mtr);
-                          page_cur->block= old_block;
-                        }
-                        page_cur->rec= rec;
+                        for_each_delete_marked(
+                            btr_cur_get_page_cur(cursor), index, mtr,
+                            [index, thr, mtr, inherit,
+                             &err](rec_t *rec, buf_block_t *block,
+                                   bool first_rec) {
+                              return !(err= lock_rec_insert_check_and_lock(
+                                           rec, block, index, thr, mtr,
+                                           inherit, first_rec));
+                            });
                         if (err)
-                          return err;
-                }
+                            return err;
+		}
 	}
-
 	if (!index->is_primary() || !page_is_leaf(page_align(rec))) {
 		return DB_SUCCESS;
 	}
@@ -5429,8 +5365,7 @@ undo log record created.
 dberr_t
 btr_cur_del_mark_set_clust_rec(
 /*===========================*/
-	buf_block_t*	block,	/*!< in/out: buffer block of the record */
-	rec_t*		rec,	/*!< in/out: record */
+	btr_cur_t *btr_cur,
 	dict_index_t*	index,	/*!< in: clustered index of the record */
 	const rec_offs*	offsets,/*!< in: rec_get_offsets(rec) */
 	que_thr_t*	thr,	/*!< in: query thread */
@@ -5441,6 +5376,8 @@ btr_cur_del_mark_set_clust_rec(
 	roll_ptr_t	roll_ptr;
 	dberr_t		err;
 	trx_t*		trx;
+	buf_block_t *block = btr_cur_get_block(btr_cur);
+	rec_t *rec = btr_cur_get_rec(btr_cur);
 
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(rec_offs_validate(rec, index, offsets));
@@ -5470,6 +5407,9 @@ btr_cur_del_mark_set_clust_rec(
 	and the delete-mark is being updated in place. */
 
 	btr_rec_set_deleted<true>(block, rec, mtr);
+
+	for_each_delete_marked(btr_cur_get_page_cur(btr_cur), index, mtr,
+	  gap_lock_inherit_functor(index));
 
 	trx = thr_get_trx(thr);
 
@@ -5608,8 +5548,8 @@ ibool btr_cur_optimistic_delete(btr_cur_t *cursor, ulint flags, mtr_t *mtr,
 			    && rec_is_add_metadata(first_rec, *index));
 		if (UNIV_LIKELY(empty_table)) {
 			if (UNIV_LIKELY(!is_metadata)) {
-				lock_update_delete(block, rec, offsets, index,
-				    from_purge, convert_lock_to_gap);
+				lock_update_delete(block, rec, index,
+				    from_purge, convert_lock_to_gap, true);
 			}
 			btr_page_empty(block, buf_block_get_page_zip(block),
 				       index, 0, mtr);
@@ -5647,8 +5587,8 @@ ibool btr_cur_optimistic_delete(btr_cur_t *cursor, ulint flags, mtr_t *mtr,
 					    cursor->index, mtr);
 			goto func_exit;
 		} else {
-			lock_update_delete(block, rec, offsets, cursor->index,
-			    from_purge, convert_lock_to_gap);
+			lock_update_delete(block, rec, cursor->index,
+			    from_purge, convert_lock_to_gap, true);
 
 			btr_search_update_hash_on_delete(cursor);
 		}
@@ -5802,8 +5742,8 @@ ibool btr_cur_pessimistic_delete(dberr_t *err, ibool has_reserved_extents,
 			ut_ad(index->table->supports_instant());
 			ut_ad(index->is_primary());
 		} else if (flags == 0) {
-			lock_update_delete(block, rec, offsets, index,
-			    from_purge, convert_lock_to_gap);
+			lock_update_delete(block, rec, index,
+			    from_purge, convert_lock_to_gap, true);
 		}
 
 		if (block->page.id().page_no() != index->page) {
