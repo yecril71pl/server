@@ -1,0 +1,72 @@
+#
+# Purpose:
+#
+# This test ensures that the mariadb-binlog CLI tool properly displays warnings
+# when using --gtid-strict-mode
+#
+#
+# Methodology:
+#
+# We simulate invalid sequence numberings by manually changing gtid_seq_no to
+# differ from its expected linear sequence. Specifically, we test the following
+# cases:
+#   Test Case 1) Sequential sequence numbers results in no warnings
+#   Test Case 2) A skipped sequence number results in no warnings if all numbers
+#                are monotonic (i.e. gaps in sequence number are allowed
+#                provided they never decrease)
+#   Test Case 3) A sequence number lower than the last processed value results
+#                in a warning
+#   Test Case 4) Skipping a GTID and later receiving it results in a warning
+#   Test Case 5) Repeat sequence numbers result in a warning
+#   Test Case 6) Warnings from different domains are all displayed
+#   Test Case 7) A decreasing seq_no before a start-position is ignored
+#   Test Case 8) A decreasing seq_no inside of a --start/--stop position window
+#                is displayed
+#   Test Case 9) Error if --stop-position is not strictly greater than
+#                --start-position
+#   Test Case 10) Strict mode warnings should be independent of --offset option
+#                 specification
+#   Test Case 11) Strict mode warnings should be independent of
+#                 --start-timestamp option specification
+#
+# Note that test cases are tested with both --strict-gtid-mode and
+# --skip-gtid-strict-mode to ensure out of order warnings are hidden when not in
+# strict mode.
+#
+# References:
+#   MDEV-4989: Support for GTID in mysqlbinlog
+#
+
+--source include/have_log_bin.inc
+
+--echo ###############################
+--echo #      Test Setup
+--echo ###############################
+
+## Save old state
+#
+let orig_gtid_domain_id = `select @@session.gtid_domain_id`;
+let orig_server_id = `select @@session.server_id`;
+RESET MASTER;
+
+--echo ####################################################
+--echo #      Test Case Group 1
+--echo #      Run test cases with strict-gtid-mode
+--echo ####################################################
+--let is_strict_mode= 1
+--let DEFAULT_ERROR_PREFIX=ERROR
+--source include/mysqlbinlog_gtid_strict_mode.inc
+
+--echo ####################################################
+--echo #      Test Case Group 2
+--echo #      Run test cases with --skip-strict-gtid-mode
+--echo ####################################################
+--let is_strict_mode= 0
+--let DEFAULT_ERROR_PREFIX=WARNING
+--source include/mysqlbinlog_gtid_strict_mode.inc
+
+--echo ##############################
+--echo #      Cleanup
+--echo ##############################
+--eval SET @@global.gtid_domain_id= $orig_gtid_domain_id
+--eval SET @@global.server_id= $orig_server_id

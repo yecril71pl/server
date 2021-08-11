@@ -324,6 +324,8 @@ static inline bool is_enum_or_set_type(uint type) {
   return type == MYSQL_TYPE_ENUM || type == MYSQL_TYPE_SET;
 }
 
+my_bool Log_event::m_is_event_group_active= FALSE;
+my_bool Log_event::m_is_event_group_filtering_enabled= FALSE;
 
 /*
   Log_event::print_header()
