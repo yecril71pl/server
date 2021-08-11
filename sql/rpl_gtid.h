@@ -380,5 +380,229 @@ extern bool rpl_slave_state_tostring_helper(String *dest, const rpl_gtid *gtid,
 extern int gtid_check_rpl_slave_state_table(TABLE *table);
 extern rpl_gtid *gtid_parse_string_to_list(const char *p, size_t len,
                                            uint32 *out_len);
+extern rpl_gtid *gtid_unpack_string_to_list(const char *p, size_t len,
+                                           uint32 *out_len);
+
+/*
+  Interface to support different methods of filtering log events by GTID
+*/
+class Gtid_event_filter
+{
+public:
+  Gtid_event_filter() {};
+  virtual ~Gtid_event_filter() {};
+
+  enum gtid_event_filter_type
+  {
+    DELEGATING_GTID_FILTER_TYPE = 1,
+    WINDOW_GTID_FILTER_TYPE = 2,
+    REJECT_ALL_GTID_FILTER_TYPE = 3
+  };
+
+  /*
+    Run the filter on an input gtid to test if the corresponding log events
+    should be excluded from a result
+
+    Returns TRUE when the event group corresponding to the input GTID should be
+    excluded.
+    Returns FALSE when the event group should be included.
+  */
+  virtual my_bool exclude(rpl_gtid *) = 0;
+
+  /*
+    The gtid_event_filter_type that corresponds to the underlying filter
+    implementation
+  */
+  virtual uint32 get_filter_type() = 0;
+};
+
+/*
+  Filter implementation which will exclude any and all input GTIDs. This is
+  used to set default behavior for GTIDs that do not have explicit filters
+  set on their domain_id, e.g. when a Window_gtid_event_filter is used for
+  a specific domain, then all other domain_ids will be rejected using this
+  filter implementation.
+*/
+class Reject_all_gtid_filter : public Gtid_event_filter
+{
+public:
+  Reject_all_gtid_filter() {}
+  ~Reject_all_gtid_filter() {}
+  my_bool exclude(rpl_gtid *gtid) { return TRUE; }
+  uint32 get_filter_type() { return REJECT_ALL_GTID_FILTER_TYPE; }
+};
+
+/*
+  A virtual sub-class of Gtid_event_filter which allows for quick identification
+  of potentially applicable filters for arbitrary GTIDs.
+*/
+typedef uint32 gtid_filter_identifier;
+class Identifiable_gtid_event_filter : public Gtid_event_filter
+{
+
+public:
+  Identifiable_gtid_event_filter() {};
+  virtual ~Identifiable_gtid_event_filter() {};
+
+  enum gtid_filter_lookup_flags
+  {
+    BY_DOMAIN_ID= 0x1
+  };
+
+  virtual my_bool exclude(rpl_gtid *) = 0;
+  virtual uint32 get_filter_type() = 0;
+  virtual int get_lookup_flags() = 0;
+  virtual gtid_filter_identifier get_filter_identifier() = 0;
+};
+
+/*
+  A filter implementation that passes through events between two GTIDs, m_start
+  (exclusive) and m_stop (inclusive).
+
+  This filter is stateful, such that it expects GTIDs to be a sequential
+  stream, and internally, the window will activate/deactivate when the start
+  and stop positions of the event stream have passed through, respectively.
+
+  Window activation is used to pass through events from arbitrary servers that
+  were not mentioned within m_start or m_stop, yet still fall within the
+  boundary.
+*/
+class Window_gtid_event_filter : public Identifiable_gtid_event_filter
+{
+public:
+  Window_gtid_event_filter();
+  Window_gtid_event_filter(rpl_gtid *start, rpl_gtid *stop);
+  ~Window_gtid_event_filter() {}
+
+  my_bool exclude(rpl_gtid*);
+  gtid_filter_identifier get_filter_identifier();
+
+  my_bool set_start_gtid(rpl_gtid *start);
+  my_bool set_stop_gtid(rpl_gtid *stop);
+
+  /*
+    Windows are indexed by the domain_id of a GTID
+  */
+  int get_lookup_flags()
+  {
+    return BY_DOMAIN_ID;
+  }
+
+  uint32 get_filter_type() { return WINDOW_GTID_FILTER_TYPE; }
+
+private:
+  /*
+    m_has_start : Indicates if a start to this window has been explicitly
+                  provided. A window starts immediately if not provided.
+  */
+  my_bool m_has_start;
+
+  /*
+    m_has_stop : Indicates if a stop to this window has been explicitly
+                 provided. A window continues indefinitely if not provided.
+  */
+  my_bool m_has_stop;
+
+  /*
+    m_is_active : Indicates whether or not the program is currently reading
+                  events from within this window. When TRUE, events with
+                  different server ids than those specified by m_start or
+                  m_stop will be passed through.
+  */
+  my_bool m_is_active;
+
+  /*
+    m_has_passed : Indicates whether or not the program is currently reading
+                   events from within this window.
+   */
+  my_bool m_has_passed;
+
+  /* m_start : marks the GTID that begins the window (exclusive). */
+  rpl_gtid m_start;
+
+  /* m_stop : marks the GTID that ends the range (inclusive). */
+  rpl_gtid m_stop;
+
+  /* last_gtid_seen: saves the last  */
+  rpl_gtid last_gtid_seen;
+};
+
+/*
+  Data structure to help with quick lookup for filters. More specifically,
+  if two filters have identifiers that lead to the same hash, they will be
+  put into a linked list.
+*/
+typedef struct _gtid_filter_element
+{
+  gtid_filter_identifier identifier;
+  Identifiable_gtid_event_filter *filter;
+  struct _gtid_filter_element *next;
+} gtid_filter_element;
+
+/*
+  Gtid_event_filter subclass which has no specific implementation, but rather
+  delegates the filtering to specific identifiable/mapped implementations.
+
+  A default filter is used for GTIDs that are passed through which no explicit
+  filter can be identified.
+
+  This class should be subclassed, where the get_id_from_gtid function
+  specifies how to extract the filter identifier from a GTID.
+*/
+class Delegating_gtid_event_filter : public Gtid_event_filter
+{
+public:
+  Delegating_gtid_event_filter();
+  ~Delegating_gtid_event_filter();
+
+  my_bool exclude(rpl_gtid *gtid);
+  void set_default_filter(Gtid_event_filter *default_filter);
+
+  uint32 get_filter_type() { return DELEGATING_GTID_FILTER_TYPE; }
+
+  virtual gtid_filter_identifier get_id_from_gtid(rpl_gtid *) = 0;
+
+protected:
+
+  uint32 m_filter_id_mask;
+  Gtid_event_filter *m_default_filter;
+
+  /*
+    To reduce time to find a gtid window, they are indexed by domain_id. More
+    specifically, domain_ids are arranged into m_filter_id_mask+1 buckets, and
+    each bucket is a linked list of gtid_filter_elements that share the same
+    index. The index itself is found by a bitwise and, i.e.
+        some_rpl_gtid.domain_id & m_filter_id_mask
+  */
+  gtid_filter_element **m_filters_by_id;
+
+  gtid_filter_element *try_find_filter_element_for_id(gtid_filter_identifier);
+  gtid_filter_element *find_or_create_filter_element_for_id(gtid_filter_identifier);
+};
+
+/*
+  A subclass of Delegating_gtid_event_filter which identifies filters using the
+  domain id of a GTID.
+
+  Additional helper functions include:
+    add_start_gtid(GTID) : adds a start GTID position to this filter, to be
+                           identified by its domain id
+    add_stop_gtid(GTID) : adds a stop GTID position to this filter, to be
+                           identified by its domain id
+*/
+class Domain_gtid_event_filter : public Delegating_gtid_event_filter
+{
+public:
+  gtid_filter_identifier get_id_from_gtid(rpl_gtid *gtid)
+  {
+    return gtid->domain_id;
+  }
+
+  my_bool add_start_gtid(rpl_gtid *gtid);
+  my_bool add_stop_gtid(rpl_gtid *gtid);
+
+private:
+  Window_gtid_event_filter *find_or_create_window_filter_for_id(gtid_filter_identifier);
+};
 
 #endif  /* RPL_GTID_H */
