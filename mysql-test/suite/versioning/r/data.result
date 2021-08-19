@@ -1,3 +1,4 @@
+# mysqldump --dump-history
 create or replace table t1 (x int) with system versioning;
 insert into t1 values (1), (2);
 delete from t1 where x = 1;
@@ -83,5 +84,42 @@ select *, check_row_ts(row_start, row_end) from t2 for system_time all;
 x	check_row_ts(row_start, row_end)
 1	HISTORICAL ROW
 2	CURRENT ROW
+# mysqldump --as-of
+create or replace table t1 (x int) with system versioning;
+set @@system_versioning_insert_history= ON;
+insert into t1 (x, row_start, row_end) values
+(1, '1990-01-01 00:00', '1990-08-03 00:00'),
+(2, '1990-08-01 00:00', '1991-01-02 00:00'),
+(3, '1991-08-01 00:00', TIMESTAMP'2038-01-19 03:14:07.999999');
+set @@system_versioning_insert_history= OFF;
+mysqldump: Incorrect DATETIME value: '1990-08-04 00:00' where 'abc'
+drop table t1;
+## Current data
+set @t1= now(6);
+select *, check_row_ts(row_start, row_end), row_start >= @t1 from t1 for system_time all;
+x	check_row_ts(row_start, row_end)	row_start >= @t1
+3	CURRENT ROW	1
+drop table t1;
+## --as-of='1990-01-02 00:00'
+select *, row_start, row_end from t1 for system_time all;
+x	row_start	row_end
+1	1990-01-01 00:00:00.000000	1990-08-03 00:00:00.000000
+drop table t1;
+## --as-of='1990-08-02 00:00'
+select *, row_start, row_end from t1 for system_time all;
+x	row_start	row_end
+1	1990-01-01 00:00:00.000000	1990-08-03 00:00:00.000000
+2	1990-08-01 00:00:00.000000	1991-01-02 00:00:00.000000
+drop table t1;
+## --as-of='1990-08-04 00:00'
+select *, row_start, row_end from t1 for system_time all;
+x	row_start	row_end
+2	1990-08-01 00:00:00.000000	1991-01-02 00:00:00.000000
+drop table t1;
+## --dump-history --as-of='1990-08-04 00:00'
+select *, row_start, row_end from t1 for system_time all;
+x	row_start	row_end
+1	1990-01-01 00:00:00.000000	1990-08-03 00:00:00.000000
+2	1990-08-01 00:00:00.000000	1991-01-02 00:00:00.000000
 drop tables t1, t2;
 drop function check_fields;

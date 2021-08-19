@@ -45,6 +45,7 @@ let $non_default_engine= `select if(@@default_storage_engine = 'InnoDB', 'MyISAM
 let $sys_datatype_expl= timestamp(6);
 let $sys_datatype_expl_uc= TIMESTAMP(6);
 let $sys_datatype_max= TIMESTAMP'2038-01-19 03:14:07.999999';
+let $MAX_TIMESTAMP= $sys_datatype_max;
 
 if ($MTR_COMBINATION_MYISAM)
 {

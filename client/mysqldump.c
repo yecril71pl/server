@@ -155,7 +155,7 @@ static char  *opt_password=0,*current_user=0,
              *lines_terminated=0, *enclosed=0, *opt_enclosed=0, *escaped=0,
              *where=0, *order_by=0,
              *err_ptr= 0,
-             *log_error_file= NULL;
+             *log_error_file= NULL, *opt_asof_timestamp= NULL;
 static const char *opt_compatible_mode_str= 0;
 static char **defaults_argv= 0;
 static char compatible_mode_normal_str[255];
@@ -278,6 +278,9 @@ static struct my_option my_long_options[] =
    "Adds 'STOP SLAVE' prior to 'CHANGE MASTER' and 'START SLAVE' to bottom of dump.",
    &opt_slave_apply, &opt_slave_apply, 0, GET_BOOL, NO_ARG,
    0, 0, 0, 0, 0, 0},
+  {"as-of", OPT_ASOF_TIMESTAMP,
+   "Dump system versioned table as of specified timestamp.",
+   &opt_asof_timestamp, &opt_asof_timestamp, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"character-sets-dir", OPT_CHARSETS_DIR,
    "Directory for character set files.", (char **)&charsets_dir,
    (char **)&charsets_dir, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -1339,6 +1342,12 @@ static int get_options(int *argc, char ***argv)
     fprintf(stderr,
             "%s: --xml can't be used with --dump-history (not yet supported).\n",
             my_progname_short);
+    return(EX_USAGE);
+  }
+  if (opt_asof_timestamp && strchr(opt_asof_timestamp, '\''))
+  {
+    fprintf(stderr, "%s: Incorrect DATETIME value: '%s'\n",
+            my_progname_short, opt_asof_timestamp);
     return(EX_USAGE);
   }
   if (opt_compact && opt_dump_history)
@@ -3094,7 +3103,7 @@ static uint get_table_structure(const char *table, const char *db, char *table_t
   if (versioned)
   {
     *versioned= 0;
-    if (!opt_dump_history)
+    if (!opt_dump_history && !opt_asof_timestamp)
       versioned= NULL;
   }
   DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
@@ -4081,6 +4090,31 @@ static char *alloc_query_str(size_t size)
 }
 
 
+static void vers_append_system_time(DYNAMIC_STRING* query_string)
+{
+  if (opt_asof_timestamp)
+  {
+    if (opt_dump_history)
+    {
+      dynstr_append_checked(query_string, " FOR SYSTEM_TIME BETWEEN TIMESTAMP "
+                            "TIMESTAMP'0-0-0 0:0' AND TIMESTAMP '");
+      dynstr_append_checked(query_string, opt_asof_timestamp);
+      dynstr_append_checked(query_string, "'");
+    }
+    else
+    {
+      dynstr_append_checked(query_string, " FOR SYSTEM_TIME AS OF TIMESTAMP '");
+      dynstr_append_checked(query_string, opt_asof_timestamp);
+      dynstr_append_checked(query_string, "'");
+    }
+  }
+  else
+  {
+    dynstr_append_checked(query_string, " FOR SYSTEM_TIME ALL");
+  }
+}
+
+
 /*
 
  SYNOPSIS
@@ -4227,9 +4261,7 @@ static void dump_table(const char *table, const char *db, const uchar *hash_key,
     dynstr_append_checked(&query_string, " FROM ");
     dynstr_append_checked(&query_string, result_table);
     if (versioned)
-    {
-      dynstr_append_checked(&query_string, " FOR SYSTEM_TIME ALL");
-    }
+      vers_append_system_time(&query_string);
 
     if (where)
     {
@@ -4263,9 +4295,7 @@ static void dump_table(const char *table, const char *db, const uchar *hash_key,
     dynstr_append_checked(&query_string, " FROM ");
     dynstr_append_checked(&query_string, result_table);
     if (versioned)
-    {
-      dynstr_append_checked(&query_string, " FOR SYSTEM_TIME ALL");
-    }
+      vers_append_system_time(&query_string);
 
     if (where)
     {
