@@ -1,0 +1,41 @@
+#
+# MDEV-12459: The information_schema tables for getting temporary tables info is missing, --echo #             at least for innodb there is no INNODB_TEMP_TABLE_INFO
+#
+create temporary table test.t_temp(t int);
+insert into t_temp values (1),(2), (3);
+select table_catalog, table_name, table_type, engine, version, row_format,
+table_rows, avg_row_length, data_length, max_data_length, index_length,
+data_free, auto_increment, create_time, update_time, check_time,
+table_collation, checksum, create_options, table_comment, max_index_length
+from  information_schema.tables where table_type='temporary';
+table_catalog	def
+table_name	t_temp
+table_type	TEMPORARY
+engine	MyISAM
+version	10
+row_format	Fixed
+table_rows	3
+avg_row_length	7
+data_length	21
+max_data_length	1970324836974591
+index_length	1024
+data_free	0
+auto_increment	NULL
+create_time	#
+update_time	#
+check_time	NULL
+table_collation	latin1_swedish_ci
+checksum	NULL
+create_options	
+table_comment	
+max_index_length	17179868160
+Warnings:
+Level	Warning
+Code	1286
+Message	Unknown storage engine 'InnoDB'
+Level	Warning
+Code	1286
+Message	Unknown storage engine 'InnoDB'
+Level	Warning
+Code	1286
+Message	Unknown storage engine 'InnoDB'

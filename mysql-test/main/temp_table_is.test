@@ -1,0 +1,15 @@
+--echo #
+--echo # MDEV-12459: The information_schema tables for getting temporary tables info is missing, --echo #             at least for innodb there is no INNODB_TEMP_TABLE_INFO
+--echo #
+
+create temporary table test.t_temp(t int);
+insert into t_temp values (1),(2), (3);
+
+--replace_column 14 # 15 #
+--vertical_results
+# Make buildbot (RelWithDebug type) happy, exclude `table_schema` column
+select table_catalog, table_name, table_type, engine, version, row_format,
+       table_rows, avg_row_length, data_length, max_data_length, index_length,
+       data_free, auto_increment, create_time, update_time, check_time,
+       table_collation, checksum, create_options, table_comment, max_index_length
+       from  information_schema.tables where table_type='temporary';

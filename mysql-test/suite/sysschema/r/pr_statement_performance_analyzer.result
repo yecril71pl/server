@@ -138,7 +138,6 @@ CALL sys.statement_performance_analyzer('create_tmp', 'sys.tmp_digests_delta', N
 ERROR 45000: Invalid value for in_table: `sys`.`tmp_digests_delta` is reserved table name.
 CALL sys.statement_performance_analyzer('create_tmp', 'tmp_digests', NULL);
 ERROR 45000: Invalid value for in_table: `sys`.`tmp_digests` is reserved table name.
-CALL sys.statement_performance_analyzer('create_tmp', 'test.tmp_digests', NULL);
 CREATE TABLE test.tmp_unsupported LIKE test.tmp_digests_ini;
 CALL sys.statement_performance_analyzer('create_tmp', 'test.tmp_digests_ini', NULL);
 ERROR 45000: Cannot create the table `test`.`tmp_digests_ini` as it already exists.
@@ -189,7 +188,6 @@ SET @identifier := REPEAT('a', 65);
 CALL sys.statement_performance_analyzer('snapshot', CONCAT(@identifier, '.', @identifier), NULL);
 ERROR 22001: Data too long for column 'in_table' at row 1
 DROP TEMPORARY TABLE test.tmp_digests_ini;
-DROP TEMPORARY TABLE test.tmp_digests;
 DROP TABLE test.tmp_unsupported;
 DROP TABLE test.t1;
 DROP VIEW view_digests;

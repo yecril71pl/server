@@ -221,8 +221,7 @@ CALL sys.statement_performance_analyzer('create_tmp', 'sys.tmp_digests', NULL);
 CALL sys.statement_performance_analyzer('create_tmp', 'sys.tmp_digests_delta', NULL);
 -- error S45000
 CALL sys.statement_performance_analyzer('create_tmp', 'tmp_digests', NULL);
-# This should succeed
-CALL sys.statement_performance_analyzer('create_tmp', 'test.tmp_digests', NULL);
+
 CREATE TABLE test.tmp_unsupported LIKE test.tmp_digests_ini;
 # Try to create a temporary table that already exists
 -- error S45000
@@ -284,7 +283,6 @@ CALL sys.statement_performance_analyzer('snapshot', CONCAT(@identifier, '.', @id
 
 # Clean up
 DROP TEMPORARY TABLE test.tmp_digests_ini;
-DROP TEMPORARY TABLE test.tmp_digests;
 DROP TABLE test.tmp_unsupported;
 DROP TABLE test.t1;
 DROP VIEW view_digests;
