@@ -1,5 +1,7 @@
 version: build-{build}~branch-{branch}
 
+shallow_clone: true
+
 build_script:
   - cmd: >-
       cd %APPVEYOR_BUILD_FOLDER%
