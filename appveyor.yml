@@ -8,12 +8,13 @@ build_script:
   - cd win_build
   - call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
   - cmake -E time cmake .. -GNinja -DCMAKE_BUILD_TYPE=MinSizeRel -DMYSQL_MAINTAINER_MODE=ERR -DBISON_EXECUTABLE=C:\cygwin64\bin\bison  -DWITH_UNIT_TESTS=0 -DWITH_MARIABACKUP=0  -DPLUGIN_SPIDER=NO -DPLUGIN_PERFSCHEMA=NO -DPLUGIN_ROCKSDB=NO -DPLUGIN_CONNECT=NO
-  - cmake -E time cmake --build .
+  - set /A parallel=4*%NUMBER_OF_PROCESSORS%
+  - cmake -E time ninja -v -j %parallel%
 
 test_script:
   - set PATH=C:\Strawberry\perl\bin;%PATH%;C:\Program Files (x86)\Windows Kits\10\Debuggers\x64
   - cd %APPVEYOR_BUILD_FOLDER%\win_build\mysql-test
-  - set /A parallel=2*%NUMBER_OF_PROCESSORS%
+  - set /A parallel=4*%NUMBER_OF_PROCESSORS%
   - perl mysql-test-run.pl --force --max-test-fail=10 --parallel=%parallel% --testcase-timeout=10 --suite=main
 
 image: Visual Studio 2019
