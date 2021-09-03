@@ -3278,11 +3278,15 @@ sub do_before_run_mysqltest($)
       # don't rebuild a file if it's up to date
       unless (-e $dest and -M $dest < -M $resfile
                        and -M $dest < -M $base_result) {
-        run_system(@cmd);
+        if(run_system(@cmd) != 0){
+          die("system(@cmd) : $?");
+        }
       }
     } else {
       $cmd[-3] = $dest = $opt_tmpdir . '/' . basename($dest);
-      run_system(@cmd);
+      if(run_system(@cmd) != 0){
+        die("system(@cmd) : $?");
+      }
     }
     $tinfo->{result_file} = $dest;
   }
@@ -4887,7 +4891,7 @@ sub report_failure_and_restart ($) {
 
 sub run_system(@) {
   mtr_verbose("Running '$_[0]'");
-  my $ret= system(@_) >> 8;
+  my $ret= system(@_);
   return $ret;
 }
 
