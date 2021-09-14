@@ -2839,7 +2839,8 @@ static int send_one_binlog_file(binlog_send_info *info,
   return 1;
 }
 
-void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos, ushort flags)
+void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
+                       ushort flags)
 {
   LOG_INFO linfo;
 

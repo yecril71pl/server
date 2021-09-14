@@ -7,7 +7,6 @@
 #
 
 --let MYSQLD_DATADIR=`select @@datadir`
---let OUT_FILE=$MYSQLTEST_VARDIR/tmp/binlog.out
 --let BINLOG_FILE=master-bin.000001
 --let data_inconsistent_err= "table data is inconsistent after replaying binlog using GTID start/stop positions";
 
@@ -215,11 +214,11 @@ DROP TABLE t2;
 --echo #   Seq_no=0 in --stop-position excludes all events for a domain
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=0-1-0,1-2-0 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --stop-position=0-1-0,1-2-0 | $MYSQL
-if (0 < `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
 {
     die "t1 should not exist as binlog replay should exclude domain 0 from results";
 }
-if (0 < `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
 {
     die "t2 should not exist as binlog replay should exclude domain 1 from results";
 }
@@ -234,7 +233,7 @@ if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
-if (0 < `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
 {
     die "t2 should not exist as binlog replay should exclude domain 1 from results";
 }
@@ -276,7 +275,7 @@ if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
-if (0 < `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
 {
     die "t2 should not exist as binlog replay should exclude domain 1 from results";
 }
@@ -284,4 +283,33 @@ if (0 < `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'te
 --let SEARCH_FILE=$log_error_
 --let SEARCH_PATTERN=WARNING
 --source include/search_pattern_in_file.inc
+DROP TABLE t1;
+
+--echo #   Test Case 14:
+--echo #   Start position is specified twice on the command line
+CREATE TABLE t1 (a int);
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --start-position=0-1-1 --stop-position=0-1-2 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --start-position=0-1-1 --stop-position=0-1-2 | $MYSQL
+if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+{
+    die $data_inconsistent_err;
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+{
+    die "t2 should not exist as binlog replay should exclude domain 1 from results";
+}
+DROP TABLE t1;
+
+--echo #   Test Case 15:
+--echo #   Stop position is specified twice on the command line
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-1 --stop-position=0-1-2 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-1 --stop-position=0-1-2 | $MYSQL
+if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+{
+    die $data_inconsistent_err;
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+{
+    die "t2 should not exist as binlog replay should exclude domain 1 from results";
+}
 DROP TABLE t1;
