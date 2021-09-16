@@ -876,3 +876,22 @@ Warnings:
 Warning	1931	Query execution was interrupted. The query examined at least 3 rows, which exceeds LIMIT ROWS EXAMINED (2). The query result may be incomplete
 SET @@sql_mode=@old_mode;
 DROP TABLE t1;
+#
+# MDEV-22447: SIGSEGV in Item::val_uint on EXPLAIN
+#
+SET @save_GENERAL_LOG= @@GLOBAL.GENERAL_LOG;
+SET @save_log_output= @@GLOBAL.log_output;
+SET GLOBAL GENERAL_LOG=ON;
+SET GLOBAL log_output="FILE,TABLE";
+CREATE TABLE t(a DATE);
+EXPLAIN SELECT * FROM t LIMIT ROWS EXAMINED 0;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t	system	NULL	NULL	NULL	NULL	0	const row not found
+SELECT 1;
+1
+Warnings:
+Warning	1931	Query execution was interrupted. The query examined at least 0 rows, which exceeds LIMIT ROWS EXAMINED (18446744073709551615). The query result may be incomplete
+drop table t;
+SET GLOBAL GENERAL_LOG=@save_GENERAL_LOG;
+SET GLOBAL log_output=@save_log_output;
+# End of 10.2 tests

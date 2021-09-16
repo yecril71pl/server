@@ -594,3 +594,20 @@ INSERT INTO t1 (c) SELECT k FROM t1 LIMIT ROWS EXAMINED 2;
 
 SET @@sql_mode=@old_mode;
 DROP TABLE t1;
+
+--echo #
+--echo # MDEV-22447: SIGSEGV in Item::val_uint on EXPLAIN
+--echo #
+
+SET @save_GENERAL_LOG= @@GLOBAL.GENERAL_LOG;
+SET @save_log_output= @@GLOBAL.log_output;
+SET GLOBAL GENERAL_LOG=ON;
+SET GLOBAL log_output="FILE,TABLE";
+CREATE TABLE t(a DATE);
+EXPLAIN SELECT * FROM t LIMIT ROWS EXAMINED 0;
+SELECT 1;
+drop table t;
+SET GLOBAL GENERAL_LOG=@save_GENERAL_LOG;
+SET GLOBAL log_output=@save_log_output;
+
+--echo # End of 10.2 tests

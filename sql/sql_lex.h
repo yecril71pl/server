@@ -2932,6 +2932,12 @@ public:
     else
       limit_rows_examined_cnt= ULONGLONG_MAX;
   }
+  inline ulonglong get_limit_rows_examined()
+  {
+    if (limit_rows_examined)
+      return limit_rows_examined->val_uint();
+    return ULONGLONG_MAX;
+  }
 
 
   SQL_I_List<ORDER> save_group_list;
