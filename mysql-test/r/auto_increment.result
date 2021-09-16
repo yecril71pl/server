@@ -687,5 +687,15 @@ id	name
 2	cat
 DROP PROCEDURE autoinc_mdev15353_one;
 #
+# MDEV-22118: handler::update_auto_increment(): Assertion `nr != 0'
+# failed. | SIGABRT in handler::update_auto_increment
+#
+CREATE TABLE t (c INT AUTO_INCREMENT KEY);
+SET @@SESSION.insert_id=-0;
+Warnings:
+Warning	1292	Truncated incorrect insert_id value: '0'
+INSERT INTO t VALUES(0);
+drop table t;
+#
 # End of 10.2 tests
 #

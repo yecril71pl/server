@@ -4029,7 +4029,7 @@ static ulonglong read_last_insert_id(THD *thd)
 static Sys_var_session_special Sys_last_insert_id(
        "last_insert_id", "The value to be returned from LAST_INSERT_ID()",
        sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, ULONGLONG_MAX), BLOCK_SIZE(1),
+       VALID_RANGE(0, ULONGLONG_MAX), DEFAULT(0), BLOCK_SIZE(1),
        NO_MUTEX_GUARD, IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(update_last_insert_id), ON_READ(read_last_insert_id));
 
@@ -4037,7 +4037,7 @@ static Sys_var_session_special Sys_last_insert_id(
 static Sys_var_session_special Sys_identity(
        "identity", "Synonym for the last_insert_id variable",
        sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, ULONGLONG_MAX), BLOCK_SIZE(1),
+       VALID_RANGE(0, ULONGLONG_MAX), DEFAULT(0), BLOCK_SIZE(1),
        NO_MUTEX_GUARD, IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(update_last_insert_id), ON_READ(read_last_insert_id));
 
@@ -4079,7 +4079,7 @@ static Sys_var_session_special Sys_insert_id(
        "insert_id", "The value to be used by the following INSERT "
        "or ALTER TABLE statement when inserting an AUTO_INCREMENT value",
        sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, ULONGLONG_MAX), BLOCK_SIZE(1),
+       VALID_RANGE(1, ULONGLONG_MAX), DEFAULT(1), BLOCK_SIZE(1),
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(update_insert_id), ON_READ(read_insert_id));
 
@@ -4101,7 +4101,7 @@ static Sys_var_session_special Sys_rand_seed1(
        "rand_seed1", "Sets the internal state of the RAND() "
        "generator for replication purposes",
        sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, ULONG_MAX), BLOCK_SIZE(1),
+       VALID_RANGE(0, ULONG_MAX), DEFAULT(0), BLOCK_SIZE(1),
        NO_MUTEX_GUARD, IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(update_rand_seed1), ON_READ(read_rand_seed1));
 
@@ -4123,7 +4123,7 @@ static Sys_var_session_special Sys_rand_seed2(
        "rand_seed2", "Sets the internal state of the RAND() "
        "generator for replication purposes",
        sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, ULONG_MAX), BLOCK_SIZE(1),
+       VALID_RANGE(0, ULONG_MAX), DEFAULT(0), BLOCK_SIZE(1),
        NO_MUTEX_GUARD, IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(update_rand_seed2), ON_READ(read_rand_seed2));
 
@@ -4136,7 +4136,7 @@ static Sys_var_session_special Sys_error_count(
        "error_count", "The number of errors that resulted from the "
        "last statement that generated messages",
        READ_ONLY sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, ULONGLONG_MAX), BLOCK_SIZE(1), NO_MUTEX_GUARD,
+       VALID_RANGE(0, ULONGLONG_MAX), DEFAULT(0), BLOCK_SIZE(1), NO_MUTEX_GUARD,
        NOT_IN_BINLOG, ON_CHECK(0), ON_UPDATE(0), ON_READ(read_error_count));
 
 static ulonglong read_warning_count(THD *thd)
@@ -4148,7 +4148,7 @@ static Sys_var_session_special Sys_warning_count(
        "warning_count", "The number of errors, warnings, and notes "
        "that resulted from the last statement that generated messages",
        READ_ONLY sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, ULONGLONG_MAX), BLOCK_SIZE(1), NO_MUTEX_GUARD,
+       VALID_RANGE(0, ULONGLONG_MAX), DEFAULT(0), BLOCK_SIZE(1), NO_MUTEX_GUARD,
        NOT_IN_BINLOG, ON_CHECK(0), ON_UPDATE(0), ON_READ(read_warning_count));
 
 static Sys_var_ulong Sys_default_week_format(
@@ -5577,7 +5577,7 @@ static ulonglong in_transaction(THD *thd)
 static Sys_var_session_special Sys_in_transaction(
        "in_transaction", "Whether there is an active transaction",
        READ_ONLY sys_var::ONLY_SESSION, NO_CMD_LINE,
-       VALID_RANGE(0, 1), BLOCK_SIZE(1), NO_MUTEX_GUARD,
+       VALID_RANGE(0, 1), DEFAULT(0), BLOCK_SIZE(1), NO_MUTEX_GUARD,
        NOT_IN_BINLOG, ON_CHECK(0), ON_UPDATE(0), ON_READ(in_transaction));
 
 #ifndef DBUG_OFF

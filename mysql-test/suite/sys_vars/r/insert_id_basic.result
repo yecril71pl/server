@@ -10,14 +10,18 @@ SELECT @@session.insert_id;
 99
 '#---------------------FN_DYNVARS_051_02-------------------------#'
 SET @@session.insert_id = @start_value;
+Warnings:
+Warning	1292	Truncated incorrect insert_id value: '0'
 SELECT @@session.insert_id = 0;
 @@session.insert_id = 0
-1
+0
 '#--------------------FN_DYNVARS_051_03------------------------#'
 SET @@session.insert_id = 0;
+Warnings:
+Warning	1292	Truncated incorrect insert_id value: '0'
 SELECT @@session.insert_id;
 @@session.insert_id
-0
+1
 SET @@session.insert_id = 1099;
 SELECT @@session.insert_id;
 @@session.insert_id
@@ -36,7 +40,7 @@ Warnings:
 Warning	1292	Truncated incorrect insert_id value: '-1'
 SELECT @@session.insert_id;
 @@session.insert_id
-0
+1
 SET @@session.insert_id = 100000000000;
 SELECT @@session.insert_id;
 @@session.insert_id
@@ -51,7 +55,7 @@ Warnings:
 Warning	1292	Truncated incorrect insert_id value: '-1024'
 SELECT @@session.insert_id;
 @@session.insert_id
-0
+1
 SET @@session.insert_id = 42949672950;
 SELECT @@session.insert_id;
 @@session.insert_id
@@ -92,9 +96,11 @@ SELECT @@session.insert_id;
 @@session.insert_id
 1
 SET @@session.insert_id = FALSE;
+Warnings:
+Warning	1292	Truncated incorrect insert_id value: '0'
 SELECT @@session.insert_id;
 @@session.insert_id
-0
+1
 '#---------------------FN_DYNVARS_051_09----------------------#'
 SET @@session.insert_id = 1;
 SELECT @@insert_id = @@session.insert_id;
@@ -119,6 +125,8 @@ ERROR 42S02: Unknown table 'session' in field list
 SELECT insert_id = @@session.insert_id;
 ERROR 42S22: Unknown column 'insert_id' in 'field list'
 SET @@session.insert_id = @start_value;
+Warnings:
+Warning	1292	Truncated incorrect insert_id value: '0'
 SELECT @@session.insert_id;
 @@session.insert_id
-0
+1

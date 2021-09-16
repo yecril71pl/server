@@ -430,6 +430,16 @@ SET @engine='MyISAM';
 --source include/autoinc_mdev15353.inc
 
 --echo #
+--echo # MDEV-22118: handler::update_auto_increment(): Assertion `nr != 0'
+--echo # failed. | SIGABRT in handler::update_auto_increment
+--echo #
+
+CREATE TABLE t (c INT AUTO_INCREMENT KEY);
+SET @@SESSION.insert_id=-0;  # Or -1, -2 etc.
+INSERT INTO t VALUES(0);
+drop table t;
+
+--echo #
 --echo # End of 10.2 tests
 --echo #
 

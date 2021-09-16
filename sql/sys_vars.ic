@@ -1757,7 +1757,8 @@ public:
   Sys_var_session_special(const char *name_arg,
                const char *comment, int flag_args,
                CMD_LINE getopt,
-               ulonglong min_val, ulonglong max_val, uint block_size,
+               ulonglong min_val, ulonglong max_val, ulonglong def,
+               uint block_size,
                PolyLock *lock, enum binlog_status_enum binlog_status_arg,
                on_check_function on_check_func,
                session_special_update_function update_func_arg,
@@ -1765,7 +1766,7 @@ public:
                const char *substitute=0)
     : Sys_var_ulonglong(name_arg, comment, flag_args, 0,
               sizeof(ulonglong), getopt, min_val,
-              max_val, 0, block_size, lock, binlog_status_arg, on_check_func, 0,
+              max_val, def, block_size, lock, binlog_status_arg, on_check_func, 0,
               substitute),
       read_func(read_func_arg), update_func(update_func_arg)
   {
