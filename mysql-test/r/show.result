@@ -40,5 +40,16 @@ nm	varchar(32)	YES		NULL
 a	int(11)	YES		NULL	
 drop table t1;
 #
+# MDEV-22883: Assertion `!parse_error || lex.sphead == 0' failed in
+# Table_triggers_list::check_n_load | SIGSEGV in strxmov
+#
+CREATE TABLE t1 (a INT);
+CREATE TRIGGER tr1 BEFORE INSERT ON t1 FOR EACH ROW SET @a=1;
+CREATE TRIGGER tr2 BEFORE DELETE ON t1 FOR EACH ROW SET @b=1;
+SET TMP_DISK_TABLE_SIZE= 1024;
+SHOW TRIGGERS;
+ERROR HY000: The table '(temporary)' is full
+DROP TABLE t1;
+#
 # End of 10.2 tests
 #

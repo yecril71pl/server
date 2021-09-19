@@ -4849,7 +4849,8 @@ end:
   */
   DBUG_ASSERT(thd->open_tables == NULL);
   thd->mdl_context.rollback_to_savepoint(open_tables_state_backup->mdl_system_tables_svp);
-  thd->clear_error();
+  if (!thd->is_fatal_error)
+    thd->clear_error();
   return res;
 }
 
@@ -5064,7 +5065,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
                 continue;
             }
 
-            if (thd->killed == ABORT_QUERY)
+            if (thd->killed == ABORT_QUERY || thd->is_fatal_error)
             {
               error= 0;
               goto err;
@@ -5079,6 +5080,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
               goto err;
           }
         }
+        // Here in 10.3 should be fixed IF with ABORT_QUERY as above
       }
     }
   }

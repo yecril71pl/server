@@ -35,5 +35,20 @@ show fields from test.t1 where field in
 drop table t1;
 
 --echo #
+--echo # MDEV-22883: Assertion `!parse_error || lex.sphead == 0' failed in
+--echo # Table_triggers_list::check_n_load | SIGSEGV in strxmov
+--echo #
+
+CREATE TABLE t1 (a INT);
+CREATE TRIGGER tr1 BEFORE INSERT ON t1 FOR EACH ROW SET @a=1;
+CREATE TRIGGER tr2 BEFORE DELETE ON t1 FOR EACH ROW SET @b=1;
+SET TMP_DISK_TABLE_SIZE= 1024;
+--error ER_RECORD_FILE_FULL
+SHOW TRIGGERS;
+ 
+# Cleanup
+DROP TABLE t1;
+
+--echo #
 --echo # End of 10.2 tests
 --echo #
