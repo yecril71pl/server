@@ -124,13 +124,25 @@ public:
   /* 
     A node may have children nodes. When a node's explain structure is 
     created, children nodes may not yet have QPFs. This is why we store ids.
+
+    TODO: shoud be unsigned as SELECT_LEX::select_number
   */
   Dynamic_array<int> children;
   void add_child(int select_no)
   {
     children.append(select_no);
   }
-
+  void remove_child(int select_no)
+  {
+    for (int i= 0; i < (int) children.elements(); i++)
+    {
+      if ((children.at(i)) == select_no)
+      {
+        children.del(i);
+        return;
+      }
+    }
+  }
   virtual int print_explain(Explain_query *query, select_result_sink *output, 
                             uint8 explain_flags, bool is_analyze)=0;
   virtual void print_explain_json(Explain_query *query, Json_writer *writer, 

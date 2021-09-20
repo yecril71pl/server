@@ -1205,6 +1205,8 @@ Item_singlerow_subselect::select_transformer(JOIN *join)
       )
   {
     have_to_be_excluded= 1;
+    // this should work but no
+    this->eliminated= 1;
     if (thd->lex->describe)
     {
       char warn_buff[MYSQL_ERRMSG_SIZE];
@@ -1212,6 +1214,26 @@ Item_singlerow_subselect::select_transformer(JOIN *join)
               select_lex->select_number);
       push_warning(thd, Sql_condition::WARN_LEVEL_NOTE,
 		   ER_SELECT_REDUCED, warn_buff);
+    }
+    if (thd->lex->explain)
+    {
+      /*
+        Exclude explain node of this subselect, because it will be
+        eliminamed
+      */
+      SELECT_LEX *outer= select_lex->outer_select();
+      Explain_node *parent;
+      if (outer->master_unit()->fake_select_lex != outer)
+        parent= thd->lex->explain->get_select(outer->select_number);
+      else
+        /*
+          subqueries of fake_select connected to explain node of the unit
+          (not fake select)
+        */
+        parent=
+          thd->lex->explain->get_union(outer->master_unit()->first_select()->
+                                       select_number);
+      parent->remove_child((int)select_lex->select_number);
     }
     substitution= select_lex->item_list.head();
     /*
