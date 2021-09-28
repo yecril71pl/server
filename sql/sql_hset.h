@@ -38,6 +38,8 @@ public:
     m_hash.get_key= (my_hash_get_key)K;
     m_hash.charset= cs;
     m_hash.array.m_psi_key= psi_key;
+    my_hash_init_opt(m_hash.array.m_psi_key, &m_hash, m_hash.charset,
+                     START_SIZE, 0, 0, m_hash.get_key, 0, HASH_UNIQUE);
   }
   Hash_set(PSI_memory_key psi_key, CHARSET_INFO *charset, ulong default_array_elements,
            size_t key_offset, size_t key_length, my_hash_get_key get_key,
