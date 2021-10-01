@@ -346,7 +346,7 @@ MY_FUNCTION_NAME(scanner_next_pad_trim)(my_uca_scanner *scanner,
       */
       res.weight= scanner->cs->state & MY_CS_NOPAD ?
                   0 : my_space_weight(scanner->level);
-      res.nchars= nchars;
+      res.nchars= (uint) nchars;
       (*generated)++;
     }
   }
