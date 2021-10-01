@@ -441,6 +441,16 @@ cmp_data(
 		return(cmp_whole_field(mtype, prtype,
 				       data1, (unsigned) len1,
 				       data2, (unsigned) len2));
+	case DATA_MYSQL:
+		uint cs_num = dtype_get_charset_coll(prtype);
+		CHARSET_INFO *cs = get_charset(cs_num, MYF(MY_WME));
+		if (!cs) {
+			ib::fatal() << "Unable to find charset-collation "
+				    << cs_num;
+		}
+		return cs->coll->strnncollsp_nchars(cs, data1, len1,
+						    data2, len2,
+						    std::max(len1, len2));
 	}
 
 	ulint	len;
