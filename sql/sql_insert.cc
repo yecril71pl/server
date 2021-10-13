@@ -1705,7 +1705,7 @@ int vers_insert_history_row(TABLE *table)
 
 int write_record(THD *thd, TABLE *table,COPY_INFO *info)
 {
-  int error, trg_error= 0;
+  int error=0, trg_error= 0;
   char *key=0;
   MY_BITMAP *save_read_set, *save_write_set;
   ulonglong prev_insert_id= table->file->next_insert_id;
