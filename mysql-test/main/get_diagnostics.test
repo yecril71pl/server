@@ -1640,3 +1640,14 @@ GET DIAGNOSTICS CONDITION 1 @n= ROW_NUMBER, @m= MESSAGE_TEXT;
 SELECT @n, @m;
 
 DROP TABLE t1;
+
+--echo #
+--echo # Number of an invalid row is not calculated for table value constructor
+--echo #
+
+CREATE TABLE t (a CHAR(1)) VALUES ('a'),('b'),('foo');
+
+GET DIAGNOSTICS CONDITION 1 @n= ROW_NUMBER;
+SELECT @n;
+
+DROP TABLE t;
