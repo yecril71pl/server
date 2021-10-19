@@ -847,7 +847,7 @@ algorithm=instant;
 alter table tmp
 modify b varchar(50) charset utf8mb4 collate utf8mb4_vietnamese_ci,
 algorithm=instant;
-ERROR 0A000: ALGORITHM=INSTANT is not supported. Reason: ADD INDEX. Try ALGORITHM=NOCOPY
+ERROR 0A000: ALGORITHM=INSTANT is not supported. Reason: Cannot change column type. Try ALGORITHM=COPY
 alter table tmp
 modify c varchar(50) charset utf8mb4 collate utf8mb4_vietnamese_ci,
 algorithm=instant;
@@ -2075,4 +2075,40 @@ SELECT * FROM t1;
 id	a
 1	a1
 2	a1
+DROP TABLE t1;
+#
+# MDEV-26294 Duplicate entries in unique index not detected when changing collation with INPLACE / NOCOPY algoritm
+#
+CREATE TABLE t1 (
+id INT PRIMARY KEY,
+msg VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_bin,  UNIQUE(msg)
+) ENGINE=INNODB;
+INSERT INTO t1 VALUES (1, 'aaa');
+INSERT INTO t1 VALUES (2, 'AAA');
+ALTER TABLE t1 MODIFY msg VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci, ALGORITHM=COPY;
+ERROR 23000: Duplicate entry 'AAA' for key 'msg'
+ALTER TABLE t1 MODIFY msg VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci, ALGORITHM=NOCOPY;
+ERROR 0A000: ALGORITHM=NOCOPY is not supported. Reason: Cannot change column type. Try ALGORITHM=COPY
+DROP TABLE t1;
+CREATE TABLE t1 (
+id INT PRIMARY KEY,
+msg CHAR(100) CHARACTER SET utf8 COLLATE utf8_bin,  UNIQUE(msg)
+) ENGINE=INNODB;
+INSERT INTO t1 VALUES (1, 'aaa');
+INSERT INTO t1 VALUES (2, 'AAA');
+ALTER TABLE t1 MODIFY msg VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci, ALGORITHM=COPY;
+ERROR 23000: Duplicate entry 'AAA' for key 'msg'
+ALTER TABLE t1 MODIFY msg VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci, ALGORITHM=NOCOPY;
+ERROR 0A000: ALGORITHM=NOCOPY is not supported. Reason: Cannot change column type. Try ALGORITHM=COPY
+DROP TABLE t1;
+CREATE TABLE t1 (
+id INT PRIMARY KEY,
+msg TEXT(100) CHARACTER SET utf8 COLLATE utf8_bin,  UNIQUE(msg)
+) ENGINE=INNODB;
+INSERT INTO t1 VALUES (1, 'aaa');
+INSERT INTO t1 VALUES (2, 'AAA');
+ALTER TABLE t1 MODIFY msg VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci, ALGORITHM=COPY;
+ERROR 23000: Duplicate entry 'AAA' for key 'msg'
+ALTER TABLE t1 MODIFY msg VARCHAR(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci, ALGORITHM=NOCOPY;
+ERROR 0A000: ALGORITHM=NOCOPY is not supported. Reason: Cannot change column type. Try ALGORITHM=COPY
 DROP TABLE t1;

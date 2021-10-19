@@ -21152,6 +21152,24 @@ supports_enlarging(const dict_table_t* table, const Field_varstring* field,
 	       || field->field_length > 255 || !table->not_redundant();
 }
 
+static bool is_part_of_a_key(const Field *field)
+{
+  const TABLE_SHARE *s= field->table->s;
+
+  for (uint i= 0; i < s->keys; i++)
+  {
+    const KEY &key= s->key_info[i];
+    for (uint j= 0; j < key.user_defined_key_parts; j++)
+    {
+      const KEY_PART_INFO &info= key.key_part[j];
+      if (info.field->field_index == field->field_index)
+        return true;
+    }
+  }
+
+  return false;
+}
+
 bool ha_innobase::can_convert_varstring(
     const Field_varstring *field, const Column_definition &new_type) const
 {
@@ -21176,6 +21194,12 @@ bool ha_innobase::can_convert_varstring(
     if (!field_cs.encoding_allows_reinterpret_as(new_type.charset))
       return false;
 
+    const char *name0= field_cs.collation_specific_name().str;
+    const char *name1= Charset(new_type.charset).collation_specific_name().str;
+    if (!strcmp(name0, "_bin") && strcmp(name1, "_bin") &&
+        is_part_of_a_key(field))
+      return false;
+
     if (!field_cs.eq_collation_specific_names(new_type.charset))
       return !is_part_of_a_primary_key(field);
 
@@ -21196,24 +21220,6 @@ bool ha_innobase::can_convert_varstring(
   }
 
   return true;
-}
-
-static bool is_part_of_a_key(const Field_blob *field)
-{
-  const TABLE_SHARE *s= field->table->s;
-
-  for (uint i= 0; i < s->keys; i++)
-  {
-    const KEY &key= s->key_info[i];
-    for (uint j= 0; j < key.user_defined_key_parts; j++)
-    {
-      const KEY_PART_INFO &info= key.key_part[j];
-      if (info.field->field_index == field->field_index)
-        return true;
-    }
-  }
-
-  return false;
 }
 
 bool ha_innobase::can_convert_blob(const Field_blob *field,
