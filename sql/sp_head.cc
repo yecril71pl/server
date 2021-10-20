@@ -2033,6 +2033,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   */
   if (argcount != m_pcont->context_var_count())
   {
+    thd->get_stmt_da()->reset_current_row_for_warning(0);
     /*
       Need to use my_error here, or it will not terminate the
       invoking query properly.

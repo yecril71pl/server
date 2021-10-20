@@ -1667,3 +1667,32 @@ GET DIAGNOSTICS CONDITION 2 @n= ROW_NUMBER;
 SELECT @n;
 
 DROP TABLE t1;
+
+--echo #
+--echo # MDEV-26843: Inconsistent behavior of ROW_NUMBER upon resignalling from function
+--echo #
+CREATE OR REPLACE FUNCTION f(a INT) RETURNS INT RETURN a;
+DELIMITER |;
+CREATE OR REPLACE FUNCTION f2() RETURNS INT
+BEGIN
+  DECLARE i INT DEFAULT -1;
+  DECLARE EXIT HANDLER FOR 1318
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 @row_number_in_f2= ROW_NUMBER, @msg_in_f2= MESSAGE_TEXT;
+    RESIGNAL;
+    RETURN -2;
+  END;
+  SELECT f() INTO i;
+  RETURN i;
+END |
+DELIMITER ;|
+ 
+--error ER_SP_WRONG_NO_OF_ARGS
+SELECT f2();
+ 
+GET DIAGNOSTICS CONDITION 1 @row_number_outside= ROW_NUMBER, @msg_outside= MESSAGE_TEXT;
+SELECT @row_number_in_f2, @msg_in_f2;
+SELECT @row_number_outside, @msg_outside;
+
+DROP FUNCTION f2;
+DROP FUNCTION f;
