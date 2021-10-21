@@ -90,7 +90,7 @@ public:
   int slave_start(Master_info *mi);
   int slave_stop(Master_info *mi);
   int request_transmit(Master_info*);
-  void kill_connection(MYSQL *mysql);
+  int kill_connection(MYSQL *mysql);
   int reset_slave(Master_info *mi);
 
 private:
