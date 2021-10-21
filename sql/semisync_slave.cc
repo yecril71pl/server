@@ -114,11 +114,19 @@ int Repl_semi_sync_slave::slave_start(Master_info *mi)
 
 int Repl_semi_sync_slave::slave_stop(Master_info *mi)
 {
+  int ret= 0;
+  if (get_slave_enabled())
+  {
+    if ((ret= kill_connection(mi->mysql)))
+    {
+      sql_print_warning("Failed to kill the active semi-sync connection");
+    }
+  }
+
   if (rpl_semi_sync_slave_status)
     rpl_semi_sync_slave_status= 0;
-  if (get_slave_enabled())
-    kill_connection(mi->mysql);
-  return 0;
+
+  return ret;
 }
 
 int Repl_semi_sync_slave::reset_slave(Master_info *mi)
@@ -126,31 +134,35 @@ int Repl_semi_sync_slave::reset_slave(Master_info *mi)
   return 0;
 }
 
-void Repl_semi_sync_slave::kill_connection(MYSQL *mysql)
+int Repl_semi_sync_slave::kill_connection(MYSQL *mysql)
 {
-  if (!mysql)
-    return;
-
+  bool ret= 0;
   char kill_buffer[30];
   MYSQL *kill_mysql = NULL;
+  size_t kill_buffer_length;
+
+  if (!mysql)
+    goto end;
+
   kill_mysql = mysql_init(kill_mysql);
   mysql_options(kill_mysql, MYSQL_OPT_CONNECT_TIMEOUT, &m_kill_conn_timeout);
   mysql_options(kill_mysql, MYSQL_OPT_READ_TIMEOUT, &m_kill_conn_timeout);
   mysql_options(kill_mysql, MYSQL_OPT_WRITE_TIMEOUT, &m_kill_conn_timeout);
 
-  bool ret= (!mysql_real_connect(kill_mysql, mysql->host,
+  ret= (!mysql_real_connect(kill_mysql, mysql->host,
             mysql->user, mysql->passwd,0, mysql->port, mysql->unix_socket, 0));
-  if (DBUG_EVALUATE_IF("semisync_slave_failed_kill", 1, 0) || ret)
-  {
-    sql_print_information("cannot connect to master to kill slave io_thread's "
-                          "connection");
-    mysql_close(kill_mysql);
-    return;
-  }
-  size_t kill_buffer_length = my_snprintf(kill_buffer, 30, "KILL %lu",
-                                        mysql->thread_id);
-  mysql_real_query(kill_mysql, kill_buffer, (ulong)kill_buffer_length);
+  if (DBUG_EVALUATE_IF("semisync_slave_failed_kill", (ret= 1), 0) || ret)
+    goto end;
+
+  DBUG_EXECUTE_IF("slave_delay_killing_semisync_connection", my_sleep(400000););
+
+  kill_buffer_length=
+      my_snprintf(kill_buffer, 30, "KILL %lu", mysql->thread_id);
+  ret= mysql_real_query(kill_mysql, kill_buffer, (ulong)kill_buffer_length);
+
+end:
   mysql_close(kill_mysql);
+  return ret;
 }
 
 int Repl_semi_sync_slave::request_transmit(Master_info *mi)

@@ -4520,6 +4520,7 @@ pthread_handler_t handle_slave_io(void *arg)
   uint retry_count;
   bool suppress_warnings;
   int ret;
+  int err_stopping_semisync;
   rpl_io_thread_info io_info;
 #ifndef DBUG_OFF
   mi->dbug_do_disconnect= false;
@@ -4848,6 +4849,7 @@ Stopping slave I/O thread due to out-of-memory error from master");
           not cause the slave IO thread to stop, and the error messages are
           already reported.
         */
+        DBUG_EXECUTE_IF("simulate_delay_semisync_slave_reply", my_sleep(800000););
         (void)repl_semisync_slave.slave_reply(mi);
       }
 
@@ -4919,7 +4921,7 @@ err:
                           tmp.c_ptr_safe());
     sql_print_information("master was %s:%d", mi->host, mi->port);
   }
-  repl_semisync_slave.slave_stop(mi);
+  err_stopping_semisync= repl_semisync_slave.slave_stop(mi);
   thd->reset_query();
   thd->reset_db(&null_clex_str);
   if (mysql)
@@ -4935,7 +4937,14 @@ err:
 #ifdef SIGNAL_WITH_VIO_CLOSE
     thd->clear_active_vio();
 #endif
-    mysql_close(mysql);
+    /*
+      Don't close the connection if it is semi-sync and failed to close
+      gracefully in `repl_semisync_slave.slave_stop`, e.g. if the master is
+      shutting down and force killed the kill_mysql connection before issuing
+      `KILL {mysql->thread_id}`. Let it time out instead.
+    */
+    if (!err_stopping_semisync)
+      mysql_close(mysql);
     mi->mysql=0;
   }
   write_ignored_events_info_to_relay_log(thd, mi);

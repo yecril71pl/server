@@ -257,6 +257,7 @@ void Ack_receiver::run()
       continue;
     }
 
+
     set_stage_info(stage_reading_semi_sync_ack);
     Slave_ilist_iterator it(m_slaves);
     while ((slave= it++))
