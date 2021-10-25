@@ -3273,7 +3273,7 @@ end:
       {
         /* Role is not granted but current user can see the role */
         my_printf_error(ER_INVALID_ROLE, "User %`s@%`s has not been granted role %`s",
-                        MYF(0), thd->security_ctx->priv_user,
+                        MYF(0), user,
                         thd->security_ctx->priv_host, rolename);
       }
       else
