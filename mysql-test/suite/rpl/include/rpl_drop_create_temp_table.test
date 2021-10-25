@@ -204,6 +204,35 @@ SET @commands= 'B T Drop-Temp-NN-Temp N Drop-Temp-NN-Temp Te C';
 SET @commands= 'B T Drop-Temp-NN-Temp N Drop-Temp-NN-Temp NeT-trig C';
 --source suite/rpl/include/rpl_drop_create_temp_table.inc
 
+--echo # > MDEV-26833
+--echo # Errored out and rolled back Te statement should not produce any event to binlog
+--echo #   in the following cases:
+
+SET @sav_var = @@session.binlog_direct_non_transactional_updates;
+
+SET @@session.binlog_direct_non_transactional_updates = ON;
+SET @commands= 'B T Drop-Temp-TT-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'Drop-Temp-T-Temp B T Create-T-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T Drop-Temp-TN-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T N-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+SET @@session.binlog_direct_non_transactional_updates = OFF;
+SET @commands= 'B T Drop-Temp-TT-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'Drop-Temp-T-Temp B T Create-T-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T Drop-Temp-TN-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T N-Temp Te C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+SET @@session.binlog_direct_non_transactional_updates = @sav_var;
+--echo # < MDEV-26833
+
 --echo
 --echo #
 --echo #3) Generates in the binlog what follows:
@@ -282,6 +311,37 @@ SET @commands= 'B T Drop-Temp-NN-Temp N Drop-Temp-NN-Temp Te R';
 
 SET @commands= 'B T Drop-Temp-NN-Temp N Drop-Temp-NN-Temp NeT-trig R';
 --source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+--echo # > MDEV-26833
+--echo # Errored out and rolled back Te statement should not produce any event to binlog
+--echo #   in the following cases:
+
+SET @sav_var = @@session.binlog_direct_non_transactional_updates;
+
+SET @@session.binlog_direct_non_transactional_updates = ON;
+SET @commands= 'B T Drop-Temp-TT-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'Drop-Temp-T-Temp B T Create-T-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T Drop-Temp-TN-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T N-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+
+SET @@session.binlog_direct_non_transactional_updates = OFF;
+SET @commands= 'B T Drop-Temp-TT-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'Drop-Temp-T-Temp B T Create-T-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T Drop-Temp-TN-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T N-Temp Te R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+SET @@session.binlog_direct_non_transactional_updates = @sav_var;
+--echo # < MDEV-26833
+
 
 --echo #########################################################################
 --echo #                   2 - Tables dropped by "DROP TABLE"
@@ -482,6 +542,25 @@ SET @commands= 'B N N-Temp T-SELECT-T-Temp N-Temp Te R';
 
 SET @commands= 'B N N-Temp T-SELECT-T-Temp N-Temp NeT-trig R';
 --source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+--echo # > MDEV-26833
+--echo # Non-transactional side effects.
+SET @sav_var = @@session.binlog_direct_non_transactional_updates;
+
+SET @@session.binlog_direct_non_transactional_updates = ON;
+SET @commands= 'B T N-Temp Te Ne C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T N-Temp Te Ne R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+SET @@session.binlog_direct_non_transactional_updates = OFF;
+SET @commands= 'B T N-Temp Te Ne C';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+SET @commands= 'B T N-Temp Te Ne R';
+--source suite/rpl/include/rpl_drop_create_temp_table.inc
+
+SET @@session.binlog_direct_non_transactional_updates = @sav_var;
+--echo # < MDEV-26833
 
 --echo ###################################################################################
 --echo #                               CHECK CONSISTENCY
