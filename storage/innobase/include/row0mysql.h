@@ -813,7 +813,7 @@ void innobase_report_computed_value_failed(dtuple_t *row);
 @param[in,out]	mysql_table	mysql table object
 @param[in]	old_table	during ALTER TABLE, this is the old table
 				or NULL.
-@param[in]	parent_update	update vector for the parent row
+@param[in]	update	update vector for the parent row
 @param[in]	foreign		foreign key information
 @return the field filled with computed value */
 dfield_t*
@@ -828,8 +828,7 @@ innobase_get_computed_value(
 	TABLE*			mysql_table,
 	byte*			mysql_rec,
 	const dict_table_t*	old_table,
-	upd_t*			parent_update,
-	dict_foreign_t*		foreign);
+	upd_t*			parent_update);
 
 /** Get the computed value by supplying the base column values.
 @param[in,out]	table		the table whose virtual column
