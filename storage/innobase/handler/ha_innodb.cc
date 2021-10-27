@@ -21311,11 +21311,9 @@ void ins_node_t::vers_update_end(row_prebuilt_t *prebuilt, bool history_row)
     {
       dict_col_t *base_col= v_col->base_col[i];
       if (base_col->ind == table->vers_end)
-      {
         innobase_get_computed_value(row, v_col, clust_index, &local_heap,
                                     table->heap, NULL, thd, mysql_table,
-                                    mysql_table->record[0], NULL, NULL, NULL);
-      }
+                                    mysql_table->record[0], NULL, NULL);
     }
   }
   if (local_heap)
