@@ -910,13 +910,11 @@ row_ins_foreign_fill_virtual(
 	if (!record) {
 		return DB_OUT_OF_MEMORY;
 	}
-        bool set_null =
-            node->is_delete
-                ? (foreign->type & DICT_FOREIGN_ON_DELETE_SET_NULL)
-                : (foreign->type & DICT_FOREIGN_ON_UPDATE_SET_NULL);
-        DBUG_ASSERT(set_null ||
-                    (!node->is_delete
-                     && (foreign->type & DICT_FOREIGN_ON_UPDATE_CASCADE)));
+	ut_ad(!node->is_delete
+	      || (foreign->type & DICT_FOREIGN_ON_DELETE_SET_NULL));
+	ut_ad(foreign->type & (DICT_FOREIGN_ON_DELETE_SET_NULL
+			       | DICT_FOREIGN_ON_UPDATE_SET_NULL
+			       | DICT_FOREIGN_ON_UPDATE_CASCADE));
 
 	for (uint16_t i = 0; i < n_v_fld; i++) {
 

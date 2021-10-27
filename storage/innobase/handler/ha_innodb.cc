@@ -20251,6 +20251,7 @@ void innobase_report_computed_value_failed(dtuple_t *row)
 @param[in]	ifield		index field
 @param[in]	thd		MySQL thread handle
 @param[in,out]	mysql_table	mysql table object
+@param[in,out]	mysql_rec	MariaDB record buffer
 @param[in]	old_table	during ALTER TABLE, this is the old table
 				or NULL.
 @param[in]	update		update vector for the row, if any
@@ -20269,7 +20270,7 @@ innobase_get_computed_value(
 	TABLE*			mysql_table,
 	byte*			mysql_rec,
 	const dict_table_t*	old_table,
-	upd_t*			update)
+	const upd_t*		update)
 {
 	byte		rec_buf2[REC_VERSION_56_MAX_INDEX_COL_LEN];
 	byte*		buf;
@@ -20313,17 +20314,17 @@ innobase_get_computed_value(
 			= index->table->vc_templ->vtempl[col_no];
 		const byte*			data;
 
-                if (update != NULL) {
-			uint clust_no = dict_col_get_clust_pos(base_col,
-							       clust_index);
-			const upd_field_t *uf =
-				upd_get_field_by_field_no(update,
-							  clust_no, false);
-			if (uf != NULL)
+		if (update) {
+			ulint f = dict_col_get_clust_pos(base_col,
+							 clust_index);
+			ut_a(f != ULINT_UNDEFINED);
+			if (const upd_field_t *uf = upd_get_field_by_field_no(
+				    update, uint16_t(f), false)) {
 				row_field = &uf->new_val;
+			}
 		}
 
-		if (row_field == NULL) {
+		if (!row_field) {
 			row_field = dtuple_get_nth_field(row, col_no);
 		}
 
