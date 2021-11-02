@@ -1211,6 +1211,9 @@ struct dict_index_t{
     return 0;
   }
 
+  /* @return TRX_ID for inserted secondary index row */
+  trx_id_t sec_rec_get_trx_id(const rec_t *rec);
+
 #ifdef BTR_CUR_HASH_ADAPT
   /** @return a clone of this */
   dict_index_t* clone() const;
@@ -2120,6 +2123,12 @@ public:
   or mysql/innodb_index_stats.
   @return true if the table name is same as stats table */
   bool is_stats_table() const;
+
+  /* @return number of unique columns for FTS_DOC_ID index */
+  ulint fts_n_uniq() const
+  {
+    return versioned() ? 2 : 1;
+  }
 };
 
 inline void dict_index_t::set_modified(mtr_t& mtr) const

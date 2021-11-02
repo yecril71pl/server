@@ -10017,8 +10017,9 @@ innobase_fts_create_doc_id_key(
 {
 	doc_id_t	temp_doc_id;
 	dfield_t*	dfield = dtuple_get_nth_field(tuple, 0);
+	const ulint	n_uniq = index->table->fts_n_uniq();
 
-	ut_a(dict_index_get_n_unique(index) == 1);
+	ut_a(dict_index_get_n_unique(index) == n_uniq);
 
 	dtuple_set_n_fields(tuple, index->n_fields);
 	dict_index_copy_types(tuple, index, index->n_fields);
@@ -10036,9 +10037,19 @@ innobase_fts_create_doc_id_key(
 	*doc_id = temp_doc_id;
 	dfield_set_data(dfield, doc_id, sizeof(*doc_id));
 
-        dtuple_set_n_fields_cmp(tuple, 1);
+	if (n_uniq == 2) {
+		ut_ad(index->table->versioned());
+		dfield = dtuple_get_nth_field(tuple, 1);
+		if (index->table->versioned_by_id()) {
+			dfield_set_data(dfield, trx_id_max_bytes, sizeof(trx_id_max_bytes));
+		} else {
+			dfield_set_data(dfield, timestamp_max_bytes, sizeof(timestamp_max_bytes));
+		}
+	}
 
-	for (ulint i = 1; i < index->n_fields; i++) {
+        dtuple_set_n_fields_cmp(tuple, n_uniq);
+
+	for (ulint i = n_uniq; i < index->n_fields; i++) {
 		dfield = dtuple_get_nth_field(tuple, i);
 		dfield_set_null(dfield);
 	}
@@ -17447,7 +17458,7 @@ innodb_stopword_table_validate(
 	/* Validate the stopword table's (if supplied) existence and
 	of the right format */
 	int ret = stopword_table_name && !fts_valid_stopword_table(
-		stopword_table_name);
+		stopword_table_name, NULL, NULL);
 
 	row_mysql_unlock_data_dictionary(trx);
 
