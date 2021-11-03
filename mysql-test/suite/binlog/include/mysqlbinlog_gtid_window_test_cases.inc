@@ -64,7 +64,7 @@ DROP TABLE t2;
 --echo #
 --echo #   Test Case 1:
 --echo #   The end of the binlog file resets the server and domain id of the
---echo # session
+--echo # session-
 
 # As gtid_domain_id and server_id should not change after reading binlog in GTID
 # mode, change variables to otherwise-unused values to ensure they remain
