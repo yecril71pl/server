@@ -1,8 +1,14 @@
-environment:
-  APPVEYOR_RDP_PASSWORD: 8@J)5m2}*S]Hh/}1
+#environment:
+#   APPVEYOR_RDP_PASSWORD: 8@J)5m2}*S]Hh/}1
 
 init:
-  - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+  # - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+  - ps: iex ((new-object net.webclient).DownloadString('https://chocolatey.org/install.ps1')); `
+  - choco feature disable --name showDownloadProgress
+  - choco install -y winflexbison
+  - C:\ProgramData\chocolatey\lib\winflexbison\tools\win_bison.exe --version
+  #- setx PATH "%PATH%;C:\ProgramData\chocolatey\lib\winflexbison\tools"
+  #- where bison.exe
 
 version: build-{build}~branch-{branch}
 
@@ -23,7 +29,7 @@ build_script:
   - set BUILD_TYPE=MinSizeRel
   - set GENERATOR=-GNinja
   - call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
-  - cmake -E time cmake %GENERATOR% .. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DMYSQL_MAINTAINER_MODE=ERR -DFAST_BUILD=1 -DBISON_EXECUTABLE=C:\cygwin64\bin\bison -DPLUGIN_PERFSCHEMA=NO -DPLUGIN_FEEDBACK=NO
+  - cmake -E time cmake %GENERATOR% .. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DMYSQL_MAINTAINER_MODE=ERR -DFAST_BUILD=1 -DBISON_EXECUTABLE=C:\ProgramData\chocolatey\lib\winflexbison\tools\win_bison.exe -DPLUGIN_PERFSCHEMA=NO -DPLUGIN_FEEDBACK=NO
   - set /A jobs=2*%NUMBER_OF_PROCESSORS%
   - cmake -E time cmake --build . -j %jobs% --config %BUILD_TYPE% --target minbuild
 
