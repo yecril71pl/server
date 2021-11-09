@@ -154,7 +154,8 @@ static ulonglong start_position= BIN_LOG_HEADER_SIZE,
 #define stop_position_mot  ((my_off_t)stop_position)
 
 static Gtid_event_filter *gtid_event_filter= NULL;
-static Domain_gtid_event_filter *domain_gtid_filter= NULL;
+static Domain_gtid_event_filter *domain_window_gtid_filter= NULL;
+static Domain_gtid_event_filter *domain_id_exclusivity_gtid_filter= NULL;
 static Server_gtid_event_filter *server_gtid_filter= NULL;
 
 static char *start_datetime_str, *stop_datetime_str;
@@ -997,7 +998,7 @@ static bool print_row_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
 */
 static inline my_bool is_gtid_filtering_enabled()
 {
-  return domain_gtid_filter != NULL;
+  return domain_window_gtid_filter || domain_id_exclusivity_gtid_filter;
 }
 
 /*
@@ -1049,11 +1050,11 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
 #endif
 
   /* Run time estimation of the output window configuration. */
-  if (ev_type == GTID_LIST_EVENT && is_gtid_filtering_enabled())
+  if (ev_type == GTID_LIST_EVENT && domain_window_gtid_filter)
   {
     Gtid_list_log_event *glev= (Gtid_list_log_event *)ev;
-    size_t n_start_gtid_ranges= domain_gtid_filter->get_num_start_gtids();
-    rpl_gtid *start_gtids= domain_gtid_filter->get_start_gtids();
+    size_t n_start_gtid_ranges= domain_window_gtid_filter->get_num_start_gtids();
+    rpl_gtid *start_gtids= domain_window_gtid_filter->get_start_gtids();
     for (size_t i= 0; i < n_start_gtid_ranges; i++)
     {
       for (size_t k= 0; k < glev->count; k++)
@@ -1072,8 +1073,8 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
         }
       }
     }
-    size_t n_stop_gtid_ranges= domain_gtid_filter->get_num_stop_gtids();
-    rpl_gtid *stop_gtids= domain_gtid_filter->get_stop_gtids();
+    size_t n_stop_gtid_ranges= domain_window_gtid_filter->get_num_stop_gtids();
+    rpl_gtid *stop_gtids= domain_window_gtid_filter->get_stop_gtids();
     for (size_t i= 0; i < n_stop_gtid_ranges; i++)
     {
       for (size_t k= 0; k < glev->count; k++)
@@ -1100,7 +1101,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     If the binlog output should be filtered using GTIDs, test the new event
     group to see if its events should be written or ignored.
   */
-  if (ev_type == GTID_EVENT && gtid_event_filter)
+  if (ev_type == GTID_EVENT && is_gtid_filtering_enabled())
   {
     Gtid_log_event *gle= (Gtid_log_event*) ev;
     rpl_gtid gtid;
@@ -1148,7 +1149,8 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
         events.
       */
       if (ev_type != ROTATE_EVENT &&
-          !ev->is_event_group_active() && is_server_id_excluded(ev->server_id))
+          is_server_id_excluded(ev->server_id))
+          //!ev->is_event_group_active() && is_server_id_excluded(ev->server_id))
           //server_id && (server_id != ev->server_id))
         goto end;
     }
@@ -1561,7 +1563,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     If all filters have finished, e.g. all --stop-position GTIDs have been hit,
     and the last event group has finished printing, then we are finished
   */
-  if (domain_gtid_filter && domain_gtid_filter->has_finished() &&
+  if (domain_window_gtid_filter && domain_window_gtid_filter->has_finished() &&
       !Log_event::is_event_group_active())
     retval= OK_STOP;
 
@@ -1989,7 +1991,24 @@ static void cleanup()
   my_free(server_id_str);
   free_root(&glob_root, MYF(0));
 
-  delete gtid_event_filter;
+  if (gtid_event_filter)
+  {
+    delete gtid_event_filter;
+  }
+  else
+  {
+    /*
+      If there was an error during input parsing, gtid_event_filter will not
+      be set, so we need to ensure the comprising filters are cleaned up
+      properly.
+    */
+    if (domain_id_exclusivity_gtid_filter)
+      delete domain_id_exclusivity_gtid_filter;
+    if (domain_window_gtid_filter)
+      delete domain_window_gtid_filter;
+    if (server_gtid_filter)
+      delete server_gtid_filter;
+  }
 
   delete binlog_filter;
   delete glob_description_event;
@@ -2129,24 +2148,6 @@ static void extend_main_gtid_event_filter(Gtid_event_filter *new_filter)
   else
     gtid_event_filter=
         new Intersecting_gtid_event_filter(gtid_event_filter, new_filter);
-}
-
-static void ensure_server_filter_initialized()
-{
-  if (server_gtid_filter == NULL)
-  {
-    server_gtid_filter= new Server_gtid_event_filter();
-    extend_main_gtid_event_filter(server_gtid_filter);
-  }
-}
-
-static void ensure_domain_filter_initialized()
-{
-  if (domain_gtid_filter == NULL)
-  {
-    domain_gtid_filter= new Domain_gtid_event_filter();
-    extend_main_gtid_event_filter(domain_gtid_filter);
-  }
 }
 
 extern "C" my_bool
@@ -2335,8 +2336,9 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
   case OPT_STOP_POSITION:
   {
     /* Stop position was already specified, so reset it and use the new list */
-    if (domain_gtid_filter && domain_gtid_filter->get_num_stop_gtids() > 0)
-      domain_gtid_filter->clear_stop_gtids();
+    if (domain_window_gtid_filter &&
+        domain_window_gtid_filter->get_num_stop_gtids() > 0)
+      domain_window_gtid_filter->clear_stop_gtids();
 
     uint32 n_stop_gtid_ranges= 0;
     rpl_gtid *stop_gtids= gtid_parse_string_to_list(stop_pos_str, strlen(stop_pos_str),
@@ -2362,11 +2364,13 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
     else if (n_stop_gtid_ranges > 0)
     {
       uint32 gtid_idx;
-      ensure_domain_filter_initialized();
+      if (domain_window_gtid_filter == NULL)
+        domain_window_gtid_filter= new Domain_gtid_event_filter();
+
       for (gtid_idx = 0; gtid_idx < n_stop_gtid_ranges; gtid_idx++)
       {
         rpl_gtid *stop_gtid= &stop_gtids[gtid_idx];
-        if (domain_gtid_filter->add_stop_gtid(stop_gtid))
+        if (domain_window_gtid_filter->add_stop_gtid(stop_gtid))
         {
           my_free(stop_gtids);
           return 1;
@@ -2383,8 +2387,9 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
   case 'j':
   {
     /* Start position was already specified, so reset it and use the new list */
-    if (domain_gtid_filter && domain_gtid_filter->get_num_start_gtids() > 0)
-      domain_gtid_filter->clear_start_gtids();
+    if (domain_window_gtid_filter &&
+        domain_window_gtid_filter->get_num_start_gtids() > 0)
+      domain_window_gtid_filter->clear_start_gtids();
 
     uint32 n_start_gtid_ranges= 0;
     rpl_gtid *start_gtids= gtid_parse_string_to_list(
@@ -2398,6 +2403,9 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
         No GTIDs specified in OPT_START_POSITION specification. Treat the value
         as a singular index.
       */
+      if (domain_window_gtid_filter == NULL)
+        domain_window_gtid_filter= new Domain_gtid_event_filter();
+
       start_position= my_strtoll10(start_pos_str, &end_ptr, &err);
 
       if (err || *end_ptr)
@@ -2411,11 +2419,13 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
     else if (n_start_gtid_ranges > 0)
     {
       uint32 gtid_idx;
-      ensure_domain_filter_initialized();
+      if (domain_window_gtid_filter == NULL)
+        domain_window_gtid_filter= new Domain_gtid_event_filter();
+
       for (gtid_idx = 0; gtid_idx < n_start_gtid_ranges; gtid_idx++)
       {
         rpl_gtid *start_gtid= &start_gtids[gtid_idx];
-        if (domain_gtid_filter->add_start_gtid(start_gtid))
+        if (domain_window_gtid_filter->add_start_gtid(start_gtid))
         {
           my_free(start_gtids);
           return 1;
@@ -2437,13 +2447,15 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
 
     if (domain_ids == NULL || n_ids == 0)
     {
-      sql_print_error("Value for --ignore-domain-ids is invalid. Should be a "
+      sql_print_error("Input for --ignore-domain-ids is invalid. Should be a "
                       "list of positive integers");
       return 1;
     }
 
-    ensure_domain_filter_initialized();
-    if (domain_gtid_filter->set_blacklist(domain_ids, n_ids))
+    if (domain_id_exclusivity_gtid_filter == NULL)
+      domain_id_exclusivity_gtid_filter= new Domain_gtid_event_filter();
+
+    if (domain_id_exclusivity_gtid_filter->set_blacklist(domain_ids, n_ids))
     {
       my_free(domain_ids);
       /* TODO Set_blacklist should write the specific error*/
@@ -2462,18 +2474,17 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
 
     if (domain_ids == NULL || n_ids == 0)
     {
-      sql_print_error("Value for --do-domain-ids is invalid. Should be a "
+      sql_print_error("Input for --do-domain-ids is invalid. Should be a "
                       "list of positive integers");
       return 1;
     }
 
-    ensure_domain_filter_initialized();
-    if (domain_gtid_filter->set_whitelist(domain_ids, n_ids))
+    if (domain_id_exclusivity_gtid_filter == NULL)
+      domain_id_exclusivity_gtid_filter= new Domain_gtid_event_filter();
+
+    if (domain_id_exclusivity_gtid_filter->set_whitelist(domain_ids, n_ids))
     {
       my_free(domain_ids);
-      /* TODO set_whitelist should write the specific error*/
-      sql_print_error(
-          "Cannot combine --ignore-domain-ids with --do-domain-ids");
       return 1;
     }
     my_free(domain_ids);
@@ -2487,18 +2498,17 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
 
     if (server_ids == NULL || n_ids == 0)
     {
-      sql_print_error("Value for --ignore-server-ids is invalid. Should be a "
+      sql_print_error("Input for --ignore-server-ids is invalid. Should be a "
                       "list of positive integers");
       return 1;
     }
 
-    ensure_server_filter_initialized();
+    if (server_gtid_filter == NULL)
+      server_gtid_filter= new Server_gtid_event_filter();
+
     if (server_gtid_filter->set_blacklist(server_ids, n_ids))
     {
       my_free(server_ids);
-      /* TODO set_whitelist should write the specific error*/
-      sql_print_error(
-          "An id specified in --ignore-server-ids already has a filtering rule");
       return 1;
     }
     my_free(server_ids);
@@ -2512,18 +2522,17 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
 
     if (server_ids == NULL || n_ids == 0)
     {
-      sql_print_error("Value for --do-server-ids is invalid. Should be a "
+      sql_print_error("Input for --do-server-ids is invalid. Should be a "
                       "list of positive integers");
       return 1;
     }
 
-    ensure_server_filter_initialized();
+    if (server_gtid_filter == NULL)
+      server_gtid_filter= new Server_gtid_event_filter();
+
     if (server_gtid_filter->set_whitelist(server_ids, n_ids))
     {
       my_free(server_ids);
-      /* TODO set_whitelist should write the specific error*/
-      sql_print_error(
-          "An id specified in --do-server-ids already has a filtering rule");
       return 1;
     }
     my_free(server_ids);
@@ -2537,18 +2546,17 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
 
     if (server_ids == NULL || n_ids == 0)
     {
-      sql_print_error("Value for --server-id is invalid. Should be a "
+      sql_print_error("Input for --server-id is invalid. Should be a "
                       "list of positive integers");
       return 1;
     }
 
-    ensure_server_filter_initialized();
+    if (server_gtid_filter == NULL)
+      server_gtid_filter= new Server_gtid_event_filter();
+
     if (server_gtid_filter->set_whitelist(server_ids, n_ids))
     {
       my_free(server_ids);
-      /* TODO set_whitelist should write the specific error*/
-      sql_print_error(
-          "An id specified in --server-id already has a filtering rule");
       return 1;
     }
     my_free(server_ids);
@@ -2564,7 +2572,6 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
 
   return 0;
 }
-
 
 static int parse_args(int *argc, char*** argv)
 {
@@ -2587,10 +2594,22 @@ static int parse_args(int *argc, char*** argv)
     start_position= UINT_MAX32;
   }
 
-  if (domain_gtid_filter)
+  if (domain_window_gtid_filter)
   {
     Log_event::enable_event_group_filtering();
-    domain_gtid_filter->set_gtid_strict_mode(opt_gtid_strict_mode);
+    domain_window_gtid_filter->set_gtid_strict_mode(opt_gtid_strict_mode);
+    extend_main_gtid_event_filter(domain_window_gtid_filter);
+  }
+
+  if(domain_id_exclusivity_gtid_filter)
+  {
+    Log_event::enable_event_group_filtering();
+    extend_main_gtid_event_filter(domain_id_exclusivity_gtid_filter);
+  }
+
+  if(server_gtid_filter)
+  {
+    extend_main_gtid_event_filter(server_gtid_filter);
   }
   return 0;
 }
@@ -2773,7 +2792,7 @@ static Exit_status check_master_version()
     goto err;
   }
 
-  if (domain_gtid_filter && domain_gtid_filter->get_num_start_gtids() > 0)
+  if (domain_window_gtid_filter && domain_window_gtid_filter->get_num_start_gtids() > 0)
   {
     char str_buf[256];
     String query_str(str_buf, sizeof(str_buf), system_charset_info);
@@ -2781,8 +2800,8 @@ static Exit_status check_master_version()
     query_str.append(STRING_WITH_LEN("SET @slave_connect_state='"),
                      system_charset_info);
 
-    size_t n_start_gtids= domain_gtid_filter->get_num_start_gtids();
-    rpl_gtid *start_gtids= domain_gtid_filter->get_start_gtids();
+    size_t n_start_gtids= domain_window_gtid_filter->get_num_start_gtids();
+    rpl_gtid *start_gtids= domain_window_gtid_filter->get_start_gtids();
 
     for (size_t gtid_idx = 0; gtid_idx < n_start_gtids; gtid_idx++)
     {
@@ -3743,8 +3762,8 @@ int main(int argc, char** argv)
     free_tmpdir(&tmpdir);
   if (result_file && result_file != stdout)
     my_fclose(result_file, MYF(0));
-  if (domain_gtid_filter)
-    domain_gtid_filter->write_warnings(stderr);
+  if (gtid_event_filter)
+    gtid_event_filter->write_warnings(stderr);
   cleanup();
   /* We cannot free DBUG, it is used in global destructors after exit(). */
   my_end(my_end_arg | MY_DONT_FREE_DBUG);

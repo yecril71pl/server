@@ -632,6 +632,7 @@ public:
   uint32 get_filter_type() { return DELEGATING_GTID_FILTER_TYPE; }
 
   virtual gtid_filter_identifier get_id_from_gtid(rpl_gtid *) = 0;
+  virtual const char* get_id_type_name() = 0;
 
   /*
     Set the default behavior to include all ids except for the ones that are
@@ -701,6 +702,8 @@ public:
     return gtid->domain_id;
   }
 
+  const char* get_id_type_name() { return "domain"; }
+
   /*
     Helper function to start a GTID window filter at the given GTID
 
@@ -769,6 +772,7 @@ private:
 */
 class Server_gtid_event_filter : public Id_delegating_gtid_event_filter
 {
+
 public:
   /*
     Returns the server id of from the input GTID
@@ -777,6 +781,8 @@ public:
   {
     return gtid->server_id;
   }
+
+  const char* get_id_type_name() { return "server"; }
 };
 
 /*
@@ -805,10 +811,15 @@ public:
   Gtid_event_filter *get_filter_1() { return m_filter1; }
   Gtid_event_filter *get_filter_2() { return m_filter2; }
 
+  /*
+    Returns true if either filter has finished. To elaborate, as this filter
+    performs an intersection, if either filter has finished, the result would
+    be excluded regardless.
+  */
   my_bool has_finished()
   {
     DBUG_ASSERT(m_filter1 && m_filter2);
-    return m_filter1->has_finished() && m_filter2->has_finished();
+    return m_filter1->has_finished() || m_filter2->has_finished();
   }
 
   void write_warnings(FILE *out)

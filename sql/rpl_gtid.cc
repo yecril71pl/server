@@ -3340,12 +3340,20 @@ int Id_delegating_gtid_event_filter::set_blacklist(
   if (m_whitelist_set)
   {
     /*
-      Whitelist is already set, we can't do a blacklist and whitelist
-      together.
+      Whitelist is already set, we can't do a blacklist and whitelist together
     */
     err= 1;
+    sql_print_error("Cannot create exclusion rule for %s ids because an "
+                    "inclusion rule already exists (possibly from specifying "
+                    "both --do-%s-ids and --ignore-%s-ids)",
+                    get_id_type_name(), get_id_type_name(),
+                    get_id_type_name());
     goto err;
   }
+
+  /* If a blacklist is specified more than once, only use the latest values */
+  if (m_blacklist_set)
+    my_hash_reset(&m_filters_by_id_hash);
 
   for (id_ctr= 0; id_ctr < n_ids; id_ctr++)
   {
@@ -3362,10 +3370,6 @@ int Id_delegating_gtid_event_filter::set_blacklist(
     {
       map_element->filter= new Reject_all_gtid_filter();
       m_num_explicit_filters++;
-      //Identifiable_gtid_event_filter *rejecting_filter=
-      //    new Identifiable_gtid_event_filter(filter_id,
-      //                                       new Reject_all_gtid_filter());
-      //map_element->filter= rejecting_filter;
     }
     else if (map_element->filter->get_filter_type() !=
              REJECT_ALL_GTID_FILTER_TYPE)
@@ -3375,6 +3379,9 @@ int Id_delegating_gtid_event_filter::set_blacklist(
         Error.
       */
       err= 1;
+      sql_print_error("Cannot set filter blacklist on %s id %lu because it "
+                      "already has a filtering rule",
+                      get_id_type_name(), filter_id);
       goto err;
     }
   }
@@ -3400,12 +3407,20 @@ int Id_delegating_gtid_event_filter::set_whitelist(
   if (m_blacklist_set)
   {
     /*
-      Blacklist is already set, we can't do a blacklist and whitelist
-      together.
+      Blacklist is already set, we can't do a blacklist and whitelist together
     */
     err= 1;
+    sql_print_error("Cannot create inclusion rule for %s ids because an "
+                    "exclusion rule already exists (possibly from specifying "
+                    "both --ignore-%s-ids and --do-%s-ids)",
+                    get_id_type_name(), get_id_type_name(),
+                    get_id_type_name());
     goto err;
   }
+
+  /* If a whitelist is specified more than once, only use the latest values */
+  if (m_whitelist_set)
+    my_hash_reset(&m_filters_by_id_hash);
 
   for (id_ctr= 0; id_ctr < n_ids; id_ctr++)
   {
@@ -3422,10 +3437,6 @@ int Id_delegating_gtid_event_filter::set_whitelist(
     {
       map_element->filter= new Accept_all_gtid_filter();
       m_num_explicit_filters++;
-      //Identifiable_gtid_event_filter *accepting_filter=
-      //    new Identifiable_gtid_event_filter(filter_id,
-      //                                       new Accept_all_gtid_filter());
-      //map_element->filter= accepting_filter;
     }
     else if (map_element->filter->get_filter_type() !=
              ACCEPT_ALL_GTID_FILTER_TYPE)
@@ -3435,6 +3446,9 @@ int Id_delegating_gtid_event_filter::set_whitelist(
         Error.
       */
       err= 1;
+      sql_print_error("Cannot set filter whitelist on %s id %lu because it "
+                      "already has a filtering rule",
+                      get_id_type_name(), filter_id);
       goto err;
     }
   }
