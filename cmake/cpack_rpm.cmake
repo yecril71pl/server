@@ -96,6 +96,11 @@ can insert to, update, and select from. You can write joins against this table,
 it is possible to join data that's stored in MariaDB with data that's stored in
 Cassandra.")
 
+SET(CPACK_RPM_columnstore-engine_PACKAGE_SUMMARY "MariaDB ColumnStore storage engine")
+SET(CPACK_RPM_columnstore-engine_PACKAGE_DESCRIPTION "The MariaDB ColumnStore storage engine is a high-performance columnar
+analytical engine, aimed at rapid processing of analytical queries on very
+large amounts of data.")
+
 SET(CPACK_RPM_connect-engine_PACKAGE_SUMMARY "Connect storage engine for MariaDB")
 SET(CPACK_RPM_connect-engine_PACKAGE_DESCRIPTION "Connect engine supports a number of file formats (dbf, xml, txt, bin, etc),
 connections to ODBC tables and remote MySQL tables, as well as a number of
@@ -120,6 +125,11 @@ routes or social relationships, in plain SQL.")
 SET(CPACK_RPM_rocksdb-engine_PACKAGE_SUMMARY "RocksDB storage engine for MariaDB")
 SET(CPACK_RPM_rocksdb-engine_PACKAGE_DESCRIPTION "The RocksDB storage engine is a high performance storage engine, aimed
 at maximising storage efficiency while maintaining InnoDB-like performance.")
+
+SET(CPACK_RPM_s3-engine_PACKAGE_SUMMARY "Amazon S3 archival storage engine for MariaDB")
+SET(CPACK_RPM_s3-engine_PACKAGE_DESCRIPTION "The S3 storage engine allows one to archive MariaDB tables in Amazon S3 (or any
+third-party public or private cloud that implements S3 API), but still have
+them accessible in MariaDB in read-only mode.")
 
 SET(CPACK_RPM_tokudb-engine_PACKAGE_SUMMARY "TokuDB storage engine for MariaDB")
 SET(CPACK_RPM_tokudb-engine_PACKAGE_DESCRIPTION "The TokuDB storage engine is for use in high-performance and write-intensive
