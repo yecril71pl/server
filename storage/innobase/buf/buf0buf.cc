@@ -2840,10 +2840,7 @@ re_evict:
 
 		block->fix();
 		mysql_mutex_unlock(&buf_pool.mutex);
-		buf_flush_list();
-		buf_flush_wait_batch_end_acquiring_mutex(false);
-		while (buf_flush_list_space(space));
-		os_aio_wait_until_no_pending_writes();
+		buf_flush_sync();
 
 		if (block->page.buf_fix_count() == 1
 		    && !block->page.oldest_modification()) {
