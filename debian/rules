@@ -192,6 +192,12 @@ override_dh_installinit-arch:
 override_dh_gencontrol:
 	dh_gencontrol -- -Tdebian/substvars
 
+override_dh_installdeb:
+	dh_installdeb
+	ls $(CURDIR)/debian/
+	[ ! -f $(CURDIR)/debian/mariadb-plugin-columnstore/DEBIAN/conffiles ] || \
+		sed '\!^/etc/columnstore/Columnstore.xml$$!d' -i $(CURDIR)/debian/mariadb-plugin-columnstore/DEBIAN/conffiles
+
 # If a file is not supposed to be included anywhere, add it to the not-installed
 # file and document the reason. Note that dh_install supports the above mentioned
 # white list file only starting from Debian Stretch and Ubuntu Xenial.
