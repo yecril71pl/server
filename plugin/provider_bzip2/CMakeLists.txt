@@ -1,6 +1,9 @@
 FIND_PACKAGE(BZip2)
 
 IF (BZIP2_FOUND)
+  SET(CPACK_RPM_provider-bzip2_PACKAGE_SUMMARY "MariaDB database bzip2 provider" PARENT_SCOPE)
+  SET(CPACK_RPM_provider-bzip2_PACKAGE_DESCRIPTION "BZip2 compression support in the server and storage engines" PARENT_SCOPE)
+
   GET_PROPERTY(dirs DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
   LIST(REMOVE_ITEM dirs ${CMAKE_SOURCE_DIR}/include/providers)
   SET_PROPERTY(DIRECTORY PROPERTY INCLUDE_DIRECTORIES "${dirs}")

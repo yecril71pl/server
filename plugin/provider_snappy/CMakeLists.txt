@@ -1,6 +1,9 @@
 FIND_PACKAGE(Snappy)
 
 IF (SNAPPY_FOUND)
+  SET(CPACK_RPM_provider-snappy_PACKAGE_SUMMARY "MariaDB database snappy compression provider" PARENT_SCOPE)
+  SET(CPACK_RPM_provider-snappy_PACKAGE_DESCRIPTION "Snappy compression support in the server and storage engines" PARENT_SCOPE)
+
   GET_PROPERTY(dirs DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
   LIST(REMOVE_ITEM dirs ${CMAKE_SOURCE_DIR}/include/providers)
   SET_PROPERTY(DIRECTORY PROPERTY INCLUDE_DIRECTORIES "${dirs}")

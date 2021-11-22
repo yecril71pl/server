@@ -1,6 +1,9 @@
 FIND_PACKAGE(LibLZMA)
 
 IF (LIBLZMA_FOUND)
+  SET(CPACK_RPM_provider-lzma_PACKAGE_SUMMARY "MariaDB database lzma provider" PARENT_SCOPE)
+  SET(CPACK_RPM_provider-lzma_PACKAGE_DESCRIPTION "LZMA compression support in the server and storage engines" PARENT_SCOPE) 
+  
   GET_PROPERTY(dirs DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
   LIST(REMOVE_ITEM dirs ${CMAKE_SOURCE_DIR}/include/providers)
   SET_PROPERTY(DIRECTORY PROPERTY INCLUDE_DIRECTORIES "${dirs}")
