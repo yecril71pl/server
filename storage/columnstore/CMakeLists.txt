@@ -4,6 +4,11 @@ if("NO" STREQUAL "${PLUGIN_COLUMNSTORE}")
   return()
 endif()
 
+SET(CPACK_RPM_columnstore-engine_PACKAGE_SUMMARY "MariaDB ColumnStore storage engine" PARENT_SCOPE)
+SET(CPACK_RPM_columnstore-engine_PACKAGE_DESCRIPTION "The MariaDB ColumnStore storage engine is a high-performance columnar
+analytical engine, aimed at rapid processing of analytical queries on very
+large amounts of data." PARENT_SCOPE)
+
 # this does everything, gets the var from the correct scope, appends new
 # values, sets in the correct scope
 macro(APPEND_FOR_CPACK V)
