@@ -7,16 +7,22 @@
 #
 # Methodology:
 #
-# We simulate gaps by manually changing gtid_seq_no to differ from its expected
-# linear sequence. Specifically, we test the following cases:
-#   Test Case 1) No skipped sequence numbers results in no warnings
-#   Test Case 2) A skipped sequence number results in a warning
-#   Test Case 3) A backwards sequence number results in a warning
-#   Test Case 4) Skipping a GTID and later receiving it results in two warnings
-#   Test Case 5) Warnings from different domains are all displayed
-#   Test Case 6) A gap outside of a --start/--stop position window is ignored
-#   Test Case 7) A gap inside of a --start/--stop position window is displayed
-#   Test Case 8: Error if --stop-position is not strictly greater than
+# We simulate invalid sequence numberings by manually changing gtid_seq_no to
+# differ from its expected linear sequence. Specifically, we test the following
+# cases:
+#   Test Case 1) Sequential sequence numbers results in no warnings
+#   Test Case 2) A skipped sequence number results in no warnings if all numbers
+#                are monotonic (i.e. gaps in sequence number are allowed
+#                provided they never decrease)
+#   Test Case 3) A sequence number lower than the last processed value results
+#                in a warning
+#   Test Case 4) Skipping a GTID and later receiving it results in a warning
+#   Test Case 5) Repeat sequence numbers result in a warning
+#   Test Case 6) Warnings from different domains are all displayed
+#   Test Case 7) A decreasing seq_no before a start-position is ignored
+#   Test Case 8) A decreasing seq_no inside of a --start/--stop position window
+#                is displayed
+#   Test Case 9: Error if --stop-position is not strictly greater than
 #                --start-position
 #
 # Note that test cases are tested with both --strict-gtid-mode and

@@ -1021,6 +1021,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
   DBUG_ENTER("process_event");
   Exit_status retval= OK_CONTINUE;
   IO_CACHE *const head= &print_event_info->head_cache;
+  rpl_gtid ev_gtid;
 
   /* Bypass flashback settings to event */
   ev->is_flashback= opt_flashback;
@@ -1080,11 +1081,10 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     If the binlog output should be filtered using GTIDs, test the new event
     group to see if its events should be written or ignored.
   */
-  if (ev_type == GTID_EVENT && (domain_gtid_filter || gtid_stream_auditor))
+  if (ev_type == GTID_EVENT && domain_gtid_filter)
   {
     Gtid_log_event *gle= (Gtid_log_event*) ev;
-    rpl_gtid gtid;
-    set_rpl_gtid(&gtid, gle->domain_id, gle->server_id, gle->seq_no);
+    set_rpl_gtid(&ev_gtid, gle->domain_id, gle->server_id, gle->seq_no);
 
     if (domain_gtid_filter)
     {
@@ -1094,15 +1094,11 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
         goto end;
       }
 
-      if (!domain_gtid_filter->exclude(&gtid))
+      if (!domain_gtid_filter->exclude(&ev_gtid))
         ev->activate_current_event_group();
       else
         ev->deactivate_current_event_group();
     }
-
-    /* Out of order check */
-    if (gtid_stream_auditor && ev->is_event_group_active())
-      gtid_stream_auditor->record(&gtid);
   }
 
   /*
@@ -1152,6 +1148,21 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
 
     print_event_info->base64_output_mode= opt_base64_output_mode;
     print_event_info->print_table_metadata= opt_print_table_metadata;
+
+    if (ev_type == GTID_EVENT && gtid_stream_auditor)
+    {
+      /*
+        ev_gtid is set in the domain_gtid_filter block from earlier in the
+        function. If gtid_filtering is not used with --gtid-strict-mode, then
+        we still need to get the GTID.
+      */
+      if (!domain_gtid_filter)
+      {
+        Gtid_log_event *gle= (Gtid_log_event*) ev;
+        set_rpl_gtid(&ev_gtid, gle->domain_id, gle->server_id, gle->seq_no);
+      }
+      gtid_stream_auditor->record(&ev_gtid);
+    }
 
     DBUG_PRINT("debug", ("event_type: %s", ev->get_type_str()));
 

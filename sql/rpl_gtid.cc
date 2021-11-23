@@ -3078,7 +3078,7 @@ void Gtid_stream_auditor::record(rpl_gtid *gtid)
   }
 
   /* Out of order check */
-  if (gtid->seq_no != (last_gtid->seq_no+1))
+  if (last_gtid->seq_no >= gtid->seq_no)
   {
     struct out_of_order_elem *ooo_elem=
         (struct out_of_order_elem *) my_hash_search(
