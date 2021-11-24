@@ -631,7 +631,6 @@ typedef struct _gtid_filter_element
 {
   Gtid_event_filter *filter;
   gtid_filter_identifier identifier; /* Used for HASH lookup */
-  struct _gtid_filter_element *next;
 } gtid_filter_element;
 
 /*
@@ -691,9 +690,9 @@ public:
   Domain_gtid_event_filter()
   {
     my_init_dynamic_array(PSI_INSTRUMENT_ME, &m_start_filters,
-                          sizeof(gtid_filter_element), 8, 8, MYF(0));
+                          sizeof(gtid_filter_element*), 8, 8, MYF(0));
     my_init_dynamic_array(PSI_INSTRUMENT_ME, &m_stop_filters,
-                          sizeof(gtid_filter_element), 8, 8, MYF(0));
+                          sizeof(gtid_filter_element*), 8, 8, MYF(0));
   }
   ~Domain_gtid_event_filter()
   {

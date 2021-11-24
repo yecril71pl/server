@@ -3345,7 +3345,6 @@ Id_delegating_gtid_event_filter::find_or_create_filter_element_for_id(
     gtid_filter_element *new_fe= (gtid_filter_element *) my_malloc(
         PSI_NOT_INSTRUMENTED, sizeof(gtid_filter_element), MYF(MY_WME));
     new_fe->filter= NULL;
-    new_fe->next= NULL;
     new_fe->identifier= filter_id;
     if (my_hash_insert(&m_filters_by_id_hash, (uchar*) new_fe))
     {
