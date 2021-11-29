@@ -3167,7 +3167,13 @@ Window_gtid_event_filter::Window_gtid_event_filter()
 int Window_gtid_event_filter::set_start_gtid(rpl_gtid *start)
 {
   if (m_has_start)
+  {
+    sql_print_error(
+        "Start position cannot have repeated domain "
+        "ids (found %u-%u-%llu when %u-%u-%llu was previously specified)",
+        PARAM_GTID((*start)), PARAM_GTID(m_start));
     return 1;
+  }
 
   m_has_start= TRUE;
   set_rpl_gtid(&m_start, PARAM_GTID((*start)));
@@ -3177,7 +3183,13 @@ int Window_gtid_event_filter::set_start_gtid(rpl_gtid *start)
 int Window_gtid_event_filter::set_stop_gtid(rpl_gtid *stop)
 {
   if (m_has_stop)
+  {
+    sql_print_error(
+        "Stop position cannot have repeated domain "
+        "ids (found %u-%u-%llu when %u-%u-%llu was previously specified)",
+        PARAM_GTID((*stop)), PARAM_GTID(m_stop));
     return 1;
+  }
 
   m_has_stop= TRUE;
   set_rpl_gtid(&m_stop, PARAM_GTID((*stop)));
@@ -3308,7 +3320,7 @@ void free_gtid_filter_element(void *p)
 }
 
 Id_delegating_gtid_event_filter::Id_delegating_gtid_event_filter()
-    : m_num_explicit_filters(0), m_num_completed_filters(0)
+    : m_num_stateful_filters(0), m_num_completed_filters(0)
 {
   my_hash_init(PSI_INSTRUMENT_ME, &m_filters_by_id_hash, &my_charset_bin, 32,
                offsetof(gtid_filter_element, identifier),
@@ -3364,7 +3376,8 @@ my_bool Id_delegating_gtid_event_filter::has_finished()
     If all user-defined filters have deactivated, we are effectively
     deactivated
   */
-  return m_num_completed_filters == m_num_explicit_filters;
+  return m_num_stateful_filters &&
+         m_num_completed_filters == m_num_stateful_filters;
 }
 
 my_bool Id_delegating_gtid_event_filter::exclude(rpl_gtid *gtid)
@@ -3404,7 +3417,6 @@ Domain_gtid_event_filter::find_or_create_window_filter_for_id(
     /* New filter */
     wgef= new Window_gtid_event_filter();
     filter_element->filter= wgef;
-    m_num_explicit_filters++;
   }
   else if (filter_element->filter->get_filter_type() == WINDOW_GTID_FILTER_TYPE)
   {
@@ -3487,6 +3499,11 @@ int Domain_gtid_event_filter::add_stop_gtid(rpl_gtid *gtid)
     gtid_filter_element *fe= (gtid_filter_element *) my_hash_search(
         &m_filters_by_id_hash, (const uchar *) &(gtid->domain_id), 0);
     insert_dynamic(&m_stop_filters, (const void *) &fe);
+
+    /*
+      A window with a stop position can be disabled, and is therefore stateful.
+    */
+    m_num_stateful_filters++;
   }
 
   return err;
@@ -3567,7 +3584,6 @@ void Domain_gtid_event_filter::clear_start_gtids()
         This domain only has a stop, so delete the whole filter
       */
       my_hash_delete(&m_filters_by_id_hash, (uchar *) fe);
-      m_num_explicit_filters--;
     }
   }
 
@@ -3601,8 +3617,8 @@ void Domain_gtid_event_filter::clear_stop_gtids()
         This domain only has a start, so delete the whole filter
       */
       my_hash_delete(&m_filters_by_id_hash, (uchar *) fe);
-      m_num_explicit_filters--;
     }
+    m_num_stateful_filters--;
   }
 
   reset_dynamic(&m_stop_filters);

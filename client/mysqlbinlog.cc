@@ -1021,7 +1021,6 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
   DBUG_ENTER("process_event");
   Exit_status retval= OK_CONTINUE;
   IO_CACHE *const head= &print_event_info->head_cache;
-  rpl_gtid ev_gtid;
 
   /* Bypass flashback settings to event */
   ev->is_flashback= opt_flashback;
@@ -1077,15 +1076,16 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     my_free(stop_gtids);
   }
 
-  /*
-    If the binlog output should be filtered using GTIDs, test the new event
-    group to see if its events should be written or ignored.
-  */
-  if (ev_type == GTID_EVENT && domain_gtid_filter)
+  if (ev_type == GTID_EVENT)
   {
+    rpl_gtid ev_gtid;
     Gtid_log_event *gle= (Gtid_log_event*) ev;
     set_rpl_gtid(&ev_gtid, gle->domain_id, gle->server_id, gle->seq_no);
 
+    /*
+      If the binlog output should be filtered using GTIDs, test the new event
+      group to see if its events should be ignored.
+    */
     if (domain_gtid_filter)
     {
       if (domain_gtid_filter->has_finished())
@@ -1099,15 +1099,27 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       else
         ev->deactivate_current_event_group();
     }
+
+    /*
+      GTID stream auditor performs the --gtid-strict-mode check
+    */
+    if (gtid_stream_auditor && ev->is_event_group_active())
+      gtid_stream_auditor->record(&ev_gtid);
   }
+
+  /*
+    If the GTID is ignored, it shouldn't count towards offset (rec_count should
+    not be incremented)
+  */
+  if (!ev->is_event_group_active() && ev_type != FORMAT_DESCRIPTION_EVENT)
+    goto end_skip_count;
 
   /*
     Format events are not concerned by --offset and such, we always need to
     read them to be able to process the wanted events.
   */
   if (((rec_count >= offset) &&
-       (ev->when >= start_datetime) &&
-       ev->is_event_group_active()) ||
+       (ev->when >= start_datetime)) ||
       (ev_type == FORMAT_DESCRIPTION_EVENT))
   {
     if (ev_type != FORMAT_DESCRIPTION_EVENT)
@@ -1148,21 +1160,6 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
 
     print_event_info->base64_output_mode= opt_base64_output_mode;
     print_event_info->print_table_metadata= opt_print_table_metadata;
-
-    if (ev_type == GTID_EVENT && gtid_stream_auditor)
-    {
-      /*
-        ev_gtid is set in the domain_gtid_filter block from earlier in the
-        function. If gtid_filtering is not used with --gtid-strict-mode, then
-        we still need to get the GTID.
-      */
-      if (!domain_gtid_filter)
-      {
-        Gtid_log_event *gle= (Gtid_log_event*) ev;
-        set_rpl_gtid(&ev_gtid, gle->domain_id, gle->server_id, gle->seq_no);
-      }
-      gtid_stream_auditor->record(&ev_gtid);
-    }
 
     DBUG_PRINT("debug", ("event_type: %s", ev->get_type_str()));
 
@@ -1557,6 +1554,7 @@ err:
   retval= ERROR_STOP;
 end:
   rec_count++;
+end_skip_count:
 
   DBUG_PRINT("info", ("end event processing"));
   /*

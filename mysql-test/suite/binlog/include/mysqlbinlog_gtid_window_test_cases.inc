@@ -21,20 +21,30 @@ if ($is_remote == 1)
 
 ## Initialize test data
 #
+RESET MASTER;
 SET @@session.gtid_domain_id= 0;
 SET @@session.server_id= 1;
+--let $empty_binlog_pos= query_get_value(SHOW MASTER STATUS,Position, 1)
+set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
+SET timestamp=@a;
 CREATE TABLE t1 (a int);
+SET timestamp=@a+1;
 INSERT INTO t1 values (1), (2);
---let test2_t1_good_checksum= `CHECKSUM TABLE t1`
+--let test2_t1_mid_checksum= `CHECKSUM TABLE t1`
 
 SET @@session.gtid_domain_id= 1;
 SET @@session.server_id= 2;
+SET timestamp=@a+2;
 CREATE TABLE t2 (a int);
+SET timestamp=@a+3;
 INSERT INTO t2 values (1);
+--let t2_mid_checksum= `CHECKSUM TABLE t2`
 
 SET @@session.gtid_domain_id= 0;
 SET @@session.server_id= 1;
+SET timestamp=@a+4;
 INSERT INTO t1 values (3), (4);
+--let t1_final_checksum_pos= query_get_value(SHOW MASTER STATUS,Position, 1)
 --let t1_final_checksum= `CHECKSUM TABLE t1`
 
 SET @@session.gtid_domain_id= 1;
@@ -97,7 +107,7 @@ DROP TABLE t1;
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 | $MYSQL
 
-if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
@@ -162,12 +172,12 @@ DROP TABLE t2;
 --echo #   Only start position specified
 CREATE TABLE t1 (a int);
 INSERT INTO t1 values (3), (4);
---let test6_t1_good_checksum= `CHECKSUM TABLE t1`
+--let test6_t1_mid_checksum= `CHECKSUM TABLE t1`
 DROP TABLE t1;
 CREATE TABLE t1 (a int);
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-2 | $MYSQL
-if ($test6_t1_good_checksum != `CHECKSUM TABLE t1`)
+if ($test6_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
@@ -186,7 +196,7 @@ DROP TABLE t2;
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --stop-position=0-1-2 | $MYSQL
 
 # Reuse checksum spot from test 2
-if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
@@ -229,7 +239,7 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
 --echo # have been hit.
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --stop-position=0-1-2 | $MYSQL
-if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
@@ -256,22 +266,37 @@ if ($test3_t2_good_checksum != `CHECKSUM TABLE t2`)
 DROP TABLE t1;
 DROP TABLE t2;
 
+--echo #
 --echo #   Test Case 12:
 --echo #   Scalar and GTID values can be used together for stop or start
 --echo # position
---echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=4 --stop-position=0-1-1 | MYSQL
---exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=4 --stop-position=0-1-1 | $MYSQL
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=empty_binlog_pos --stop-position=0-1-2 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=$empty_binlog_pos --stop-position=0-1-2 | $MYSQL
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
+{
+    die $data_inconsistent_err;
+}
 DROP TABLE t1;
---echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=512 | MYSQL
---exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=512 | $MYSQL
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=t1_final_checksum_pos | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=$t1_final_checksum_pos | $MYSQL
+if ($t1_final_checksum != `CHECKSUM TABLE t1`)
+{
+    die $data_inconsistent_err;
+}
+if ($t2_mid_checksum != `CHECKSUM TABLE t2`)
+{
+    die $data_inconsistent_err;
+}
 DROP TABLE t1;
+DROP TABLE t2;
 
+--echo #
 --echo #   Test Case 13:
 --echo #   Start position is delayed within the binlog
 CREATE TABLE t1 (a int);
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-1 --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-1 --stop-position=0-1-2 | $MYSQL
-if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
@@ -285,12 +310,13 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
 --source include/search_pattern_in_file.inc
 DROP TABLE t1;
 
+--echo #
 --echo #   Test Case 14:
 --echo #   Start position is specified twice on the command line
 CREATE TABLE t1 (a int);
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --start-position=0-1-1 --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --start-position=0-1-1 --stop-position=0-1-2 | $MYSQL
-if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
@@ -300,11 +326,12 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
 }
 DROP TABLE t1;
 
+--echo #
 --echo #   Test Case 15:
 --echo #   Stop position is specified twice on the command line
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-1 --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-1 --stop-position=0-1-2 | $MYSQL
-if ($test2_t1_good_checksum != `CHECKSUM TABLE t1`)
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;
 }
@@ -313,3 +340,40 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
     die "t2 should not exist as binlog replay should exclude domain 1 from results";
 }
 DROP TABLE t1;
+
+--echo #
+--echo #   Test Case 16:
+--echo #   Start position with --offset=<n> skips n events after the first
+--echo # GTID is found
+
+# t1 needs to be specified because its creation should be skipped from
+# --offset specification
+CREATE TABLE t1 (a int);
+
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=4 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=4 | $MYSQL
+if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
+{
+    die $data_inconsistent_err;
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+{
+    die "t2 should not exist as binlog replay should exclude events after GTID 0-1-2";
+}
+DROP TABLE t1;
+
+--echo #
+--echo #   Test Case 17:
+--echo #   Start position with --start-timestamp=<T> where T occurs after the
+--echo # specified GTID results in no events before T
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24"| MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24"| $MYSQL
+if ($t2_mid_checksum != `CHECKSUM TABLE t2`)
+{
+    die $data_inconsistent_err;
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+{
+    die "t1 should not exist as binlog replay should exclude events before the given start-datetime";
+}
+DROP TABLE t2;

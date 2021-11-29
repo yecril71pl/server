@@ -37,6 +37,10 @@
 #   Test Case 13) Start position is delayed within the binlog
 #   Test Case 14) Start position is specified twice on the command line
 #   Test Case 15) Stop position is specified twice on the command line
+#   Test Case 16) Start position with --offset=<n> skips n events after the
+#                 first GTID is found
+#   Test Case 17) Start position with --start-timestamp=<T> where T occurs
+#                 after the specified GTID results in no events before T
 #
 # To validate for data consistency, each test case compares a checksum of
 # correct data against a variant created after replaying the binlog using

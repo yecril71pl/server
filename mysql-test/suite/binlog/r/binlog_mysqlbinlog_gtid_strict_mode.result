@@ -175,6 +175,51 @@ FLUSH LOGS;
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 --gtid-strict-mode > OUT_FILE
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 --gtid-strict-mode > OUT_FILE
 RESET MASTER;
+#
+#   Test Case 10:
+#   Strict mode warnings should be independent of --offset option
+# specification
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+SET @@session.gtid_seq_no= 2;
+CREATE TABLE t1 (a int);
+SET @@session.gtid_seq_no= 1;
+INSERT INTO t1 values (1);
+SET @@session.gtid_seq_no= 3;
+INSERT INTO t1 values (2);
+SET @@session.gtid_seq_no= 4;
+INSERT INTO t1 values (3);
+INSERT INTO t1 values (4);
+FLUSH LOGS;
+# MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --offset=4 --gtid-strict-mode 2> log_error_ > OUT_FILE
+FOUND 1 /WARNING/ in out.err
+DROP TABLE t1;
+RESET MASTER;
+#
+#   Test Case 11:
+#   Strict mode warnings should be independent of --start-timestamp
+# option specification
+set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+SET @@session.gtid_seq_no= 2;
+SET timestamp=@a;
+CREATE TABLE t1 (a int);
+SET @@session.gtid_seq_no= 1;
+SET timestamp=@a+1;
+INSERT INTO t1 values (1);
+SET @@session.gtid_seq_no= 3;
+SET timestamp=@a+2;
+INSERT INTO t1 values (2);
+SET @@session.gtid_seq_no= 4;
+SET timestamp=@a+3;
+INSERT INTO t1 values (3);
+INSERT INTO t1 values (4);
+FLUSH LOGS;
+MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --start-datetime="1970-01-21 15:32:24" --gtid-strict-mode 2> log_error_ > OUT_FILE
+FOUND 1 /WARNING/ in out.err
+DROP TABLE t1;
+RESET MASTER;
 ####################################################
 #      Test Case Group 2
 #      Run test cases with --skip-strict-gtid-mode
@@ -347,6 +392,51 @@ FLUSH LOGS;
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 --skip-gtid-strict-mode > OUT_FILE
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 --skip-gtid-strict-mode > OUT_FILE
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 --skip-gtid-strict-mode > OUT_FILE
+RESET MASTER;
+#
+#   Test Case 10:
+#   Strict mode warnings should be independent of --offset option
+# specification
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+SET @@session.gtid_seq_no= 2;
+CREATE TABLE t1 (a int);
+SET @@session.gtid_seq_no= 1;
+INSERT INTO t1 values (1);
+SET @@session.gtid_seq_no= 3;
+INSERT INTO t1 values (2);
+SET @@session.gtid_seq_no= 4;
+INSERT INTO t1 values (3);
+INSERT INTO t1 values (4);
+FLUSH LOGS;
+# MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --offset=4 --skip-gtid-strict-mode 2> log_error_ > OUT_FILE
+NOT FOUND /WARNING/ in out.err
+DROP TABLE t1;
+RESET MASTER;
+#
+#   Test Case 11:
+#   Strict mode warnings should be independent of --start-timestamp
+# option specification
+set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+SET @@session.gtid_seq_no= 2;
+SET timestamp=@a;
+CREATE TABLE t1 (a int);
+SET @@session.gtid_seq_no= 1;
+SET timestamp=@a+1;
+INSERT INTO t1 values (1);
+SET @@session.gtid_seq_no= 3;
+SET timestamp=@a+2;
+INSERT INTO t1 values (2);
+SET @@session.gtid_seq_no= 4;
+SET timestamp=@a+3;
+INSERT INTO t1 values (3);
+INSERT INTO t1 values (4);
+FLUSH LOGS;
+MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --start-datetime="1970-01-21 15:32:24" --skip-gtid-strict-mode 2> log_error_ > OUT_FILE
+NOT FOUND /WARNING/ in out.err
+DROP TABLE t1;
 RESET MASTER;
 ##############################
 #      Cleanup

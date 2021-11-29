@@ -243,4 +243,57 @@ FLUSH LOGS;
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 $BINLOG_STRICT_MODE_PARAM > $OUT_FILE
 RESET MASTER;
 
+--echo #
+--echo #   Test Case 10:
+--echo #   Strict mode warnings should be independent of --offset option
+--echo # specification
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+SET @@session.gtid_seq_no= 2;
+CREATE TABLE t1 (a int);
+SET @@session.gtid_seq_no= 1;
+INSERT INTO t1 values (1);
+SET @@session.gtid_seq_no= 3;
+INSERT INTO t1 values (2);
+SET @@session.gtid_seq_no= 4;
+INSERT INTO t1 values (3);
+INSERT INTO t1 values (4);
+FLUSH LOGS;
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --offset=4 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --offset=4 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
+--let SEARCH_PATTERN=WARNING
+--source include/search_pattern_in_file.inc
+--remove_file $log_error_
+DROP TABLE t1;
+RESET MASTER;
+
+--echo #
+--echo #   Test Case 11:
+--echo #   Strict mode warnings should be independent of --start-timestamp
+--echo # option specification
+set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+SET @@session.gtid_seq_no= 2;
+SET timestamp=@a;
+CREATE TABLE t1 (a int);
+SET @@session.gtid_seq_no= 1;
+SET timestamp=@a+1;
+INSERT INTO t1 values (1);
+SET @@session.gtid_seq_no= 3;
+SET timestamp=@a+2;
+INSERT INTO t1 values (2);
+SET @@session.gtid_seq_no= 4;
+SET timestamp=@a+3;
+INSERT INTO t1 values (3);
+INSERT INTO t1 values (4);
+FLUSH LOGS;
+--echo MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --start-datetime="1970-01-21 15:32:24" $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-0 --start-datetime="1970-01-21 15:32:24" $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
+--let SEARCH_PATTERN=WARNING
+--source include/search_pattern_in_file.inc
+--remove_file $log_error_
+DROP TABLE t1;
+RESET MASTER;
+
 --remove_file $OUT_FILE

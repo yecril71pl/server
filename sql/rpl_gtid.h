@@ -659,7 +659,7 @@ public:
 
 protected:
 
-  uint32 m_num_explicit_filters;
+  uint32 m_num_stateful_filters;
   uint32 m_num_completed_filters;
   Gtid_event_filter *m_default_filter;
 
