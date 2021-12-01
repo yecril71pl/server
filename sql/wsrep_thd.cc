@@ -395,6 +395,42 @@ bool wsrep_bf_abort(THD* bf_thd, THD* victim_thd)
     /* Test: mysql-wsrep-features#165. Here we enter wsrep-lib
     were LOCK_thd_data will be acquired and later LOCK_thd_kill
     thus we need to release them. */
+
+    WSREP_INFO("wsrep_cs().bf_abort: BF:"
+	      " thread %ld client_state %s client_mode %s"
+	      " trans_state %s query %s ",
+	      thd_get_thread_id(bf_thd),
+	      wsrep_thd_client_state_str(bf_thd),
+	      wsrep_thd_client_mode_str(bf_thd),
+	      wsrep_thd_transaction_state_str(bf_thd),
+	      wsrep_thd_query(bf_thd));
+    WSREP_INFO("wsrep_cs().bf_abort: victim:"
+	      " thread %ld client_state %s client_mode %s"
+	      " trans_state %s query %s ",
+	      thd_get_thread_id(victim_thd),
+	      wsrep_thd_client_state_str(victim_thd),
+	      wsrep_thd_client_mode_str(victim_thd),
+	      wsrep_thd_transaction_state_str(victim_thd),
+	      wsrep_thd_query(victim_thd));
+
+    WSREP_INFO("wsrep_cs().bf_abort victim:"
+	    "BF %d local %d applying %d toi %d local_toi %d SR %d",
+	    wsrep_thd_is_BF(victim_thd, false),
+	    wsrep_thd_is_local(victim_thd),
+	    wsrep_thd_is_applying(victim_thd),
+	    wsrep_thd_is_toi(victim_thd),
+	    wsrep_thd_is_local_toi(victim_thd),
+	    wsrep_thd_is_SR(victim_thd));
+
+    WSREP_INFO("wsrep_cs().bf_abort bf:"
+	    "BF %d local %d applying %d toi %d local_toi %d SR %d",
+	    wsrep_thd_is_BF(bf_thd, false),
+	    wsrep_thd_is_local(bf_thd),
+	    wsrep_thd_is_applying(bf_thd),
+	    wsrep_thd_is_toi(bf_thd),
+	    wsrep_thd_is_local_toi(bf_thd),
+	    wsrep_thd_is_SR(bf_thd));
+
     wsrep_thd_UNLOCK(victim_thd);
     ret= victim_thd->wsrep_cs().bf_abort(bf_seqno);
     wsrep_thd_LOCK(victim_thd);
