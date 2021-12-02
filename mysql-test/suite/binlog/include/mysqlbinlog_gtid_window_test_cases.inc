@@ -62,6 +62,12 @@ INSERT INTO t3 VALUES (1);
 
 FLUSH LOGS;
 
+--echo # Gtid list event of the 2nd binlog file whose content is
+--echo # matched against --start-position in the following tests:
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 2)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+
 --let BINLOG_FILE= query_get_value(SHOW BINARY LOGS, Log_name, 1)
 --let BINLOG_FILE2= query_get_value(SHOW BINARY LOGS, Log_name, 2)
 
@@ -438,6 +444,9 @@ if ($is_remote == 1)
     --eval PURGE BINARY LOGS TO "$BINLOG_FILE2"
 }
 
+--echo # At the following error cases analysis
+--echo # note incompatible --start-position with the value of
+--echo # Gtid list event of the 2nd binlog file printed above.
 --echo #
 --echo #   Error Case 1:
 --echo #    A GTID --start-position that does not mention all domains that make
