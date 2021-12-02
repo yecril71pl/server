@@ -7,17 +7,8 @@
 #
 
 --let MYSQLD_DATADIR=`select @@datadir`
---let BINLOG_FILE=master-bin.000001
 --let data_inconsistent_err= "table data is inconsistent after replaying binlog using GTID start/stop positions";
-
-if ($is_remote == 0)
-{
-    --let BINLOG_FILE_PARAM=$MYSQLD_DATADIR/$BINLOG_FILE.orig
-}
-if ($is_remote == 1)
-{
-    --let BINLOG_FILE_PARAM=--read-from-remote-server $BINLOG_FILE
-}
+--let $tmp_out_ = $MYSQLTEST_VARDIR/tmp/null.log
 
 ## Initialize test data
 #
@@ -61,13 +52,36 @@ INSERT INTO t2 values (4);
 --let t2_final_checksum= `CHECKSUM TABLE t2`
 
 FLUSH LOGS;
+
+# Multiple binlog file case, used by test 18
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+CREATE TABLE t3 (a int);
+INSERT INTO t3 VALUES (1);
+--let t3_final_checksum= `CHECKSUM TABLE t3`
+
+FLUSH LOGS;
+
+--let BINLOG_FILE= query_get_value(SHOW BINARY LOGS, Log_name, 1)
+--let BINLOG_FILE2= query_get_value(SHOW BINARY LOGS, Log_name, 2)
+
 if ($is_remote == 0)
 {
-    --copy_file $MYSQLD_DATADIR/master-bin.000001 $BINLOG_FILE_PARAM
+    --let BINLOG_FILE_PARAM=$MYSQLD_DATADIR/$BINLOG_FILE.orig
+    --let BINLOG_FILE_PARAM2=$MYSQLD_DATADIR/$BINLOG_FILE2.orig
 }
+if ($is_remote == 1)
+{
+    --let BINLOG_FILE_PARAM= --read-from-remote-server $BINLOG_FILE
+    --let BINLOG_FILE_PARAM2= --read-from-remote-server $BINLOG_FILE2
+}
+
+--copy_file $MYSQLD_DATADIR/$BINLOG_FILE $MYSQLD_DATADIR/$BINLOG_FILE.orig
+--copy_file $MYSQLD_DATADIR/$BINLOG_FILE2 $MYSQLD_DATADIR/$BINLOG_FILE2.orig
 
 DROP TABLE t1;
 DROP TABLE t2;
+DROP TABLE t3;
 
 
 --echo #
@@ -292,7 +306,8 @@ DROP TABLE t2;
 
 --echo #
 --echo #   Test Case 13:
---echo #   Start position is delayed within the binlog
+--echo #   If the start position is delayed within the binlog, events occurring
+--echo # before that position are ignored
 CREATE TABLE t1 (a int);
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-1 --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-1 --stop-position=0-1-2 | $MYSQL
@@ -304,15 +319,12 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
 {
     die "t2 should not exist as binlog replay should exclude domain 1 from results";
 }
---let $log_error_ = $MYSQLTEST_VARDIR/log/mysqld.1.err
---let SEARCH_FILE=$log_error_
---let SEARCH_PATTERN=WARNING
---source include/search_pattern_in_file.inc
 DROP TABLE t1;
 
 --echo #
 --echo #   Test Case 14:
---echo #   Start position is specified twice on the command line
+--echo #   If start position is repeated, the last specification overrides all
+--echo # previous ones
 CREATE TABLE t1 (a int);
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --start-position=0-1-1 --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --start-position=0-1-1 --stop-position=0-1-2 | $MYSQL
@@ -328,7 +340,8 @@ DROP TABLE t1;
 
 --echo #
 --echo #   Test Case 15:
---echo #   Stop position is specified twice on the command line
+--echo #   If stop position is repeated, the last specification overrides all
+--echo # previous ones
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-1 --stop-position=0-1-2 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-1 --stop-position=0-1-2 | $MYSQL
 if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
@@ -366,8 +379,8 @@ DROP TABLE t1;
 --echo #   Test Case 17:
 --echo #   Start position with --start-timestamp=<T> where T occurs after the
 --echo # specified GTID results in no events before T
---echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24"| MYSQL
---exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24"| $MYSQL
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24" | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24" | $MYSQL
 if ($t2_mid_checksum != `CHECKSUM TABLE t2`)
 {
     die $data_inconsistent_err;
@@ -377,3 +390,88 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
     die "t1 should not exist as binlog replay should exclude events before the given start-datetime";
 }
 DROP TABLE t2;
+
+--echo #
+--echo #   Test Case 18:
+--echo #   Successive binary logs (e.g. logs with previous logs that have been
+--echo # purged) will write events when the --start-position matches their
+--echo # Gtid_list_log_event state
+if ($is_remote == 1)
+{
+    --echo #
+    --echo # Reset server state
+    RESET MASTER;
+    --exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE.orig | $MYSQL
+    FLUSH LOGS;
+    --exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE2.orig | $MYSQL
+    FLUSH LOGS;
+    --eval PURGE BINARY LOGS TO "$BINLOG_FILE2"
+    DROP TABLE t1;
+    DROP TABLE t2;
+    DROP TABLE t3;
+}
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3,1-2-5 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-3,1-2-5 | $MYSQL
+if ($t3_final_checksum != `CHECKSUM TABLE t3`)
+{
+    die $data_inconsistent_err;
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+{
+    die "t1 should not exist as binlog replay should not have any events from unspecified binlog file";
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+{
+    die "t2 should not exist as binlog replay should not have any events from unspecified binlog file";
+}
+DROP TABLE t3;
+
+if ($is_remote == 1)
+{
+    --echo #
+    --echo # Remote-only setup for error cases
+    RESET MASTER;
+    --exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE.orig | $MYSQL
+    FLUSH LOGS;
+    --exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE2.orig | $MYSQL
+    FLUSH LOGS;
+    --eval PURGE BINARY LOGS TO "$BINLOG_FILE2"
+}
+
+--echo #
+--echo #   Error Case 1:
+--echo #    A GTID --start-position that does not mention all domains that make
+--echo # up the binary log state should error
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3 > tmp_out_
+--error 1
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-3 > $tmp_out_
+
+--echo #
+--echo #   Error Case 2:
+--echo #   A GTID --start-position with any sequence numbers which occur before
+--echo # the binary log state should result in error
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-2,1-2-5 > tmp_out_
+--error 1
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-2,1-2-5 > $tmp_out_
+
+--echo #
+--echo #   Error Case 3:
+--echo #   A GTID --start-position with any sequence numbers that are not
+--echo # eventually processed results in error
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-8,1-2-6 > tmp_out_
+--error 1
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-8,1-2-6 > $tmp_out_
+
+if ($is_remote == 1)
+{
+    --echo #
+    --echo # Remote-only cleanup from error cases
+    DROP TABLE t1;
+    DROP TABLE t2;
+    DROP TABLE t3;
+    RESET MASTER;
+}
+
+--remove_file $MYSQLD_DATADIR/$BINLOG_FILE.orig
+--remove_file $MYSQLD_DATADIR/$BINLOG_FILE2.orig
+--remove_file $tmp_out_

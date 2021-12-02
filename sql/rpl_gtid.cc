@@ -3023,138 +3023,251 @@ gtid_waiting::remove_from_wait_queue(gtid_waiting::hash_element *he,
 
 void free_domain_lookup_element(void *p)
 {
-  struct Gtid_stream_auditor::out_of_order_elem *ooo_elem=
-      (struct Gtid_stream_auditor::out_of_order_elem *) p;
-  delete_dynamic(&ooo_elem->gtids_last);
-  delete_dynamic(&ooo_elem->gtids_real);
-  my_free(ooo_elem);
+  struct Gtid_stream_auditor::audit_elem *audit_elem=
+      (struct Gtid_stream_auditor::audit_elem *) p;
+  delete_dynamic(&audit_elem->late_gtids_previous);
+  delete_dynamic(&audit_elem->late_gtids_real);
+  my_free(audit_elem);
 }
 
 Gtid_stream_auditor::Gtid_stream_auditor()
 {
-  my_hash_init(PSI_INSTRUMENT_ME, &m_last_gtid_by_domain_hash, &my_charset_bin, 32,
-               offsetof(rpl_gtid, domain_id), sizeof(rpl_gtid::domain_id),
-               NULL, my_free, HASH_UNIQUE);
-  my_hash_init(PSI_INSTRUMENT_ME, &m_out_of_order_domain_lookup, &my_charset_bin, 32,
-               offsetof(struct out_of_order_elem, domain_id), sizeof(uint32),
+  my_hash_init(PSI_INSTRUMENT_ME, &m_audit_elem_domain_lookup, &my_charset_bin, 32,
+               offsetof(struct audit_elem, domain_id), sizeof(uint32),
                NULL, free_domain_lookup_element, HASH_UNIQUE);
-  my_init_dynamic_array(PSI_INSTRUMENT_ME, &m_out_of_order_domains,
-                        sizeof(rpl_gtid::domain_id), 8, 8, MYF(0));
 }
 
 Gtid_stream_auditor::~Gtid_stream_auditor()
 {
-  my_hash_free(&m_last_gtid_by_domain_hash);
-  my_hash_free(&m_out_of_order_domain_lookup);
-  delete_dynamic(&m_out_of_order_domains);
+  my_hash_free(&m_audit_elem_domain_lookup);
 }
 
-void Gtid_stream_auditor::record(rpl_gtid *gtid)
+void Gtid_stream_auditor::initialize_start_gtids(rpl_gtid *start_gtids,
+                                                 size_t n_gtids)
 {
-  rpl_gtid *last_gtid= (rpl_gtid *) my_hash_search(
-      &m_last_gtid_by_domain_hash, (const uchar *) &(gtid->domain_id), 0);
+  size_t i;
+  for(i= 0; i < n_gtids; i++)
+  {
+    struct audit_elem *audit_elem= (struct audit_elem *) my_malloc(
+        PSI_NOT_INSTRUMENTED, sizeof(struct audit_elem), MYF(MY_WME));
+    if (!audit_elem)
+    {
+      my_error(ER_OUT_OF_RESOURCES, MYF(0));
+      return;
+    }
 
-  if (!last_gtid)
+    audit_elem->domain_id= start_gtids[i].domain_id;
+    set_rpl_gtid(&(audit_elem->start_gtid), PARAM_GTID(start_gtids[i]));
+    set_rpl_gtid(&(audit_elem->last_gtid), audit_elem->domain_id, 0, 0);
+
+    my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_real,
+                          sizeof(rpl_gtid), 8, 8, MYF(0));
+    my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_previous,
+                          sizeof(rpl_gtid), 8, 8, MYF(0));
+
+    if (my_hash_insert(&m_audit_elem_domain_lookup, (uchar *) audit_elem))
+    {
+      my_free(audit_elem);
+      my_error(ER_OUT_OF_RESOURCES, MYF(0));
+      return;
+    }
+  }
+}
+
+my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
+                                                   size_t n_gtids)
+{
+  size_t i;
+  my_bool err= FALSE;
+  for(i= 0; i < n_gtids; i++)
+  {
+    rpl_gtid *domain_state_gtid= &gtids[i];
+
+    struct audit_elem *audit_elem= (struct audit_elem *) my_hash_search(
+        &m_audit_elem_domain_lookup,
+        (const uchar *) &(domain_state_gtid->domain_id), 0);
+
+    if (!audit_elem)
+    {
+      Gtid_stream_auditor::error(
+          out, "Found unrecognized GTID state %u-%u-%llu in binary logs.",
+          domain_state_gtid->domain_id, PARAM_GTID((*domain_state_gtid)));
+      err= TRUE;
+      continue;
+    }
+
+    if (audit_elem->start_gtid.seq_no < domain_state_gtid->seq_no)
+    {
+      Gtid_stream_auditor::error(
+          out,
+          "Binary logs are missing data for domain %u. Expected data to "
+          "start from state %u-%u-%llu; however, the initial GTID state of "
+          "the logs was %u-%u-%llu.",
+          domain_state_gtid->domain_id, PARAM_GTID(audit_elem->start_gtid),
+          PARAM_GTID((*domain_state_gtid)));
+      err= TRUE;
+      continue;
+    }
+
+    if (domain_state_gtid->seq_no > audit_elem->last_gtid.seq_no)
+      set_rpl_gtid(&(audit_elem->last_gtid), PARAM_GTID((*domain_state_gtid)));
+  }
+  return err;
+}
+
+my_bool Gtid_stream_auditor::verify_gtid_state(FILE *out,
+                                               rpl_gtid *domain_state_gtid)
+{
+  struct audit_elem *audit_elem= (struct audit_elem *) my_hash_search(
+      &m_audit_elem_domain_lookup,
+      (const uchar *) &(domain_state_gtid->domain_id), 0);
+
+  if (!audit_elem)
+  {
+    Gtid_stream_auditor::error(
+        out, "GTID state %u-%u-%llu was found in binary logs but not in "
+             "start state", PARAM_GTID((*domain_state_gtid)));
+    return TRUE;
+  }
+
+  if (audit_elem->last_gtid.seq_no < domain_state_gtid->seq_no)
+  {
+    Gtid_stream_auditor::error(
+        out,
+        "Binary logs are missing data for domain %u. The current binary log "
+        "state is %u-%u-%llu, but the last seen event was %u-%u-%llu.",
+        domain_state_gtid->domain_id, PARAM_GTID((*domain_state_gtid)),
+        PARAM_GTID(audit_elem->last_gtid));
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+my_bool Gtid_stream_auditor::record(rpl_gtid *gtid)
+{
+  struct audit_elem *audit_elem= (struct audit_elem *) my_hash_search(
+      &m_audit_elem_domain_lookup, (const uchar *) &(gtid->domain_id), 0);
+
+  if (!audit_elem)
   {
     /*
       We haven't seen any GTIDs in this domian yet. Perform initial set up for
-      this domain so we can monitor following GTIDs here.
+      this domain so we can monitor its events.
     */
-    rpl_gtid *new_gtid= (rpl_gtid *) my_malloc(PSI_NOT_INSTRUMENTED,
-                                               sizeof(rpl_gtid), MYF(MY_WME));
-    if (!new_gtid)
+    audit_elem= (struct audit_elem *) my_malloc(
+        PSI_NOT_INSTRUMENTED, sizeof(struct audit_elem), MYF(MY_WME));
+    if (!audit_elem)
     {
       my_error(ER_OUT_OF_RESOURCES, MYF(0));
-      return;
+      return TRUE;
     }
-    set_rpl_gtid(new_gtid, PARAM_GTID((*gtid)));
-    if (my_hash_insert(&m_last_gtid_by_domain_hash, (const uchar *) new_gtid))
-    {
-      my_free(new_gtid);
-      my_error(ER_OUT_OF_RESOURCES, MYF(0));
-      return;
-    }
-    return;
-  }
 
-  /* Out of order check */
-  if (last_gtid->seq_no >= gtid->seq_no)
+    audit_elem->domain_id= gtid->domain_id;
+    set_rpl_gtid(&(audit_elem->last_gtid), PARAM_GTID((*gtid)));
+    set_rpl_gtid(&(audit_elem->start_gtid), PARAM_GTID((*gtid)));
+
+    my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_real,
+                          sizeof(rpl_gtid), 8, 8, MYF(0));
+    my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_previous,
+                          sizeof(rpl_gtid), 8, 8, MYF(0));
+
+    if (my_hash_insert(&m_audit_elem_domain_lookup, (uchar *) audit_elem))
+    {
+      my_free(audit_elem);
+      my_error(ER_OUT_OF_RESOURCES, MYF(0));
+      return TRUE;
+    }
+  }
+  else
   {
-    struct out_of_order_elem *ooo_elem=
-        (struct out_of_order_elem *) my_hash_search(
-            &m_out_of_order_domain_lookup, (const uchar *) &(gtid->domain_id),
-            0);
-
-    if (!ooo_elem)
+    /* Out of order check */
+    if (gtid->seq_no <= audit_elem->last_gtid.seq_no &&
+        gtid->seq_no >= audit_elem->start_gtid.seq_no)
     {
-      /*
-        First out of order sequence number on this domain, put it in the lookup
-        hash and initialize a new list to hold its specific out-of-order
-        sequence numbers
-      */
+      /* GTID is out of order */
+      insert_dynamic(&audit_elem->late_gtids_real, (const void *) gtid);
+      insert_dynamic(&audit_elem->late_gtids_previous,
+                     (const void *) &(audit_elem->last_gtid));
 
-      ooo_elem= (struct out_of_order_elem *) my_malloc(
-          PSI_NOT_INSTRUMENTED, sizeof(struct out_of_order_elem), MYF(MY_WME));
-      if (!ooo_elem)
-      {
-        my_error(ER_OUT_OF_RESOURCES, MYF(0));
-        return;
-      }
-      ooo_elem->domain_id= gtid->domain_id;
-      my_init_dynamic_array(PSI_INSTRUMENT_ME, &ooo_elem->gtids_real,
-                            sizeof(rpl_gtid), 8, 8, MYF(0));
-      my_init_dynamic_array(PSI_INSTRUMENT_ME, &ooo_elem->gtids_last,
-                            sizeof(rpl_gtid), 8, 8, MYF(0));
-
-      if(my_hash_insert(&m_out_of_order_domain_lookup,
-                     (uchar*) ooo_elem))
-      {
-        my_free(ooo_elem);
-        my_error(ER_OUT_OF_RESOURCES, MYF(0));
-        return;
-      }
-      insert_dynamic(&m_out_of_order_domains,
-                     (const void *) &last_gtid->domain_id);
+      return TRUE;
     }
-
-    insert_dynamic(&ooo_elem->gtids_real, (const void *) gtid);
-    insert_dynamic(&ooo_elem->gtids_last, (const void *) last_gtid);
+    else
+    {
+      /* GTID is valid */
+      set_rpl_gtid(&(audit_elem->last_gtid), PARAM_GTID((*gtid)));
+    }
   }
 
-  if (gtid->seq_no > last_gtid->seq_no)
-    set_rpl_gtid(last_gtid, PARAM_GTID((*gtid)));
+  return FALSE;
 }
 
-void Gtid_stream_auditor::report(FILE *out)
+/*
+  Data structure used to help pass data into report_audit_findings because
+  my_hash_iterate only passes one parameter
+*/
+struct gtid_report_ctx
 {
-  size_t i, j;
+  FILE *out_file;
+  my_bool is_strict_mode;
+  my_bool contains_err;
+};
 
-  for(i = 0; i < m_out_of_order_domains.elements; i++)
+static my_bool report_audit_findings(void *entry, void *report_ctx_arg)
+{
+  struct Gtid_stream_auditor::audit_elem *audit_el=
+      (struct Gtid_stream_auditor::audit_elem *) entry;
+
+  struct gtid_report_ctx *report_ctx=
+      (struct gtid_report_ctx *) report_ctx_arg;
+  FILE *out= report_ctx->out_file;
+  my_bool is_strict_mode= report_ctx->is_strict_mode;
+  size_t i;
+  void (*report_f)(FILE*, const char*, ...);
+
+  if (is_strict_mode)
+    report_f= Gtid_stream_auditor::error;
+  else
+    report_f= Gtid_stream_auditor::warn;
+
+  if (audit_el)
   {
-    uint32 *domain_id_ptr=
-        (uint32 *) dynamic_array_ptr(&m_out_of_order_domains, i);
-    DBUG_ASSERT(domain_id_ptr);
-    struct out_of_order_elem *ooo_elem=
-        (struct out_of_order_elem *) my_hash_search(
-            &m_out_of_order_domain_lookup, (const uchar *) domain_id_ptr, 0);
-
-    if (ooo_elem)
+    if (audit_el->last_gtid.seq_no < audit_el->start_gtid.seq_no)
     {
-      for(j = 0; j < ooo_elem->gtids_last.elements; j++)
-      {
-        rpl_gtid *real_gtid=
-            (rpl_gtid *) dynamic_array_ptr(&(ooo_elem->gtids_real), j);
-        rpl_gtid *last_gtid=
-            (rpl_gtid *) dynamic_array_ptr(&(ooo_elem->gtids_last), j);
-        DBUG_ASSERT(real_gtid && last_gtid);
-        fprintf(
-            out,
-            "WARNING: Out of order GTID while in strict mode. Got %u-%u-%llu "
-            "after %u-%u-%llu\n",
-            PARAM_GTID((*real_gtid)), PARAM_GTID((*last_gtid)));
-      }
+      report_f(out,
+             "Binary logs never reached expected GTID state of %u-%u-%llu",
+             PARAM_GTID(audit_el->start_gtid));
+      report_ctx->contains_err= TRUE;
+    }
+
+    /* Report any out of order GTIDs */
+    for(i= 0; i < audit_el->late_gtids_real.elements; i++)
+    {
+      rpl_gtid *real_gtid=
+          (rpl_gtid *) dynamic_array_ptr(&(audit_el->late_gtids_real), i);
+      rpl_gtid *last_gtid= (rpl_gtid *) dynamic_array_ptr(
+          &(audit_el->late_gtids_previous), i);
+      DBUG_ASSERT(real_gtid && last_gtid);
+
+      report_f(out,
+               "Found out of order GTID. Got %u-%u-%llu after %u-%u-%llu",
+               PARAM_GTID((*real_gtid)), PARAM_GTID((*last_gtid)));
+      report_ctx->contains_err= TRUE;
     }
   }
+
+  return FALSE;
+}
+
+my_bool Gtid_stream_auditor::report(FILE *out, my_bool is_strict_mode)
+{
+  struct gtid_report_ctx report_ctx;
+  report_ctx.out_file= out;
+  report_ctx.is_strict_mode= is_strict_mode;
+  report_ctx.contains_err= FALSE;
+  my_hash_iterate(&m_audit_elem_domain_lookup, report_audit_findings, &report_ctx);
+  fflush(out);
+  return is_strict_mode ? report_ctx.contains_err : FALSE;
 }
 
 Window_gtid_event_filter::Window_gtid_event_filter()

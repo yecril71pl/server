@@ -397,52 +397,102 @@ class Gtid_stream_auditor
 {
 public:
 
-  struct out_of_order_elem
+  struct audit_elem
   {
     uint32 domain_id;
+
+
+    /*
+      Holds the largest GTID received, and is indexed by domain_id
+    */
+    rpl_gtid last_gtid;
+
+    /*
+      Holds the largest GTID received, and is indexed by domain_id
+    */
+    rpl_gtid start_gtid;
 
     /*
       List of the problematic GTIDs received which were out of order
     */
-    DYNAMIC_ARRAY gtids_real;
+    DYNAMIC_ARRAY late_gtids_real;
 
     /*
-      For each problematic GTID in gtids_real, this list contains the last
+      For each problematic GTID in late_gtids_real, this list contains the last
       GTID of the domain at the time of receiving the out of order GTID.
     */
-    DYNAMIC_ARRAY gtids_last;
+    DYNAMIC_ARRAY late_gtids_previous;
   };
 
   Gtid_stream_auditor();
   ~Gtid_stream_auditor();
 
   /*
-    Take note of a new GTID being processed
+    Initialize where we should start monitoring for invalid GTID entries
+    in the data stream. Note that these start positions must occur at or after
+    a given binary logs GTID state (from Gtid_list_log_event)
   */
-  void record(rpl_gtid *gtid);
+  void initialize_start_gtids(rpl_gtid *start_gtids, size_t n_gtids);
 
   /*
-    Writes warnings found (if any) during GTID processing
+    Initialize our current state so we know where to expect GTIDs to start
+    increasing from. Error if the state exists after our expected start_gtid
+    positions, because we know we will be missing event data (possibly from
+    a purged log).
   */
-  void report(FILE *out);
+  my_bool initialize_gtid_state(FILE *out, rpl_gtid *gtids, size_t n_gtids);
+
+  /*
+    Ensure a GTID state (e.g., from a Gtid_list_log_event) is consistent with
+    the current state of our auditing. For example, if we see a GTID from a
+    Gtid_list_log_event that is ahead of our current state for that domain, we
+    have missed events (perhaps from a missing log).
+  */
+  my_bool verify_gtid_state(FILE *out, rpl_gtid *gtid_state_cur);
+
+  /*
+    Take note of a new GTID being processed.
+
+    returns TRUE if the GTID is invalid, FALSE on success
+  */
+  my_bool record(rpl_gtid *gtid);
+
+  /*
+    Writes warnings/errors (if any) during GTID processing
+
+    Returns TRUE if any findings were reported, FALSE otherwise
+  */
+  my_bool report(FILE *out, my_bool is_strict_mode);
+
+  static void report_details(FILE *out, const char *format, va_list args)
+  {
+    vfprintf(out, format, args);
+    fprintf(out, "\n");
+  }
+
+  static void warn(FILE *out, const char *format,...)
+  {
+    va_list args;
+    va_start(args, format);
+    fprintf(out, "WARNING: ");
+    report_details(out, format, args);
+  }
+
+  static void error(FILE *out, const char *format,...)
+  {
+    va_list args;
+    va_start(args, format);
+    fprintf(out, "ERROR: ");
+    report_details(out, format, args);
+  }
 
 private:
 
   /*
-    Holds the largest GTID received, and is indexed by domain_id
+    Holds the records for each domain id we are monitoring. Elements are of type
+    `struct audit_elem` and indexed by domian_id.
   */
-  HASH m_last_gtid_by_domain_hash;
-
-  /*
-    Holds all out-of-order GTIDs for each domain id. Elements are of type
-    `struct out_of_order_elem` and indexed by domian_id.
-  */
-  HASH m_out_of_order_domain_lookup;
-
-  /*
-    A set (unique) of all domain_ids which contain out of order GTIDs.
-  */
-  DYNAMIC_ARRAY m_out_of_order_domains;
+  HASH m_audit_elem_domain_lookup;
 };
 
 /*

@@ -54,6 +54,7 @@ RESET MASTER;
 --echo #      Run test cases with strict-gtid-mode
 --echo ####################################################
 --let is_strict_mode= 1
+--let DEFAULT_ERROR_PREFIX=ERROR
 --source include/mysqlbinlog_gtid_strict_mode.inc
 
 --echo ####################################################
@@ -61,6 +62,7 @@ RESET MASTER;
 --echo #      Run test cases with --skip-strict-gtid-mode
 --echo ####################################################
 --let is_strict_mode= 0
+--let DEFAULT_ERROR_PREFIX=WARNING
 --source include/mysqlbinlog_gtid_strict_mode.inc
 
 --echo ##############################

@@ -1022,6 +1022,15 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
   Exit_status retval= OK_CONTINUE;
   IO_CACHE *const head= &print_event_info->head_cache;
 
+  /*
+    We use Gtid_list_log_event information to determine if there is missing
+    data between where a user expects events to start/stop (i.e. the GTIDs
+    provided by --start-position and --stop-position), and the true start of
+    the specified binary logs. The first GLLE provides the initial state of the
+    binary logs.
+  */
+  static my_bool was_first_glle_processed= FALSE;
+
   /* Bypass flashback settings to event */
   ev->is_flashback= opt_flashback;
 #ifdef WHEN_FLASHBACK_REVIEW_READY
@@ -1029,51 +1038,71 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
 #endif
 
   /* Run time estimation of the output window configuration. */
-  if (ev_type == GTID_LIST_EVENT && is_gtid_filtering_enabled())
+  if (ev_type == GTID_LIST_EVENT && is_gtid_filtering_enabled() && ev->when)
   {
     Gtid_list_log_event *glev= (Gtid_list_log_event *)ev;
-    size_t n_start_gtid_ranges= domain_gtid_filter->get_num_start_gtids();
-    rpl_gtid *start_gtids= domain_gtid_filter->get_start_gtids();
-    for (size_t i= 0; i < n_start_gtid_ranges; i++)
+
+    /*
+      If this is the first Gtid_list_log_event, initialize the state of the
+      GTID stream auditor to be consistent with the binary logs provided
+    */
+    if (glev->count && !was_first_glle_processed &&
+        gtid_stream_auditor->initialize_gtid_state(stderr, glev->list,
+                                                   glev->count))
+      goto err;
+
+    /*
+      Verify that we are able to process events from this binlog. For example,
+      if our current GTID state is behind the state of the GLLE in the new log,
+      a user may have accidentally left out a log file to process.
+    */
+    my_bool glle_state_invalid= FALSE;
+    for (size_t k= 0; k < glev->count; k++)
     {
-      for (size_t k= 0; k < glev->count; k++)
+      if (gtid_stream_auditor->verify_gtid_state(stderr, &(glev->list[k])))
+        glle_state_invalid= TRUE;
+    }
+
+    /*
+      We only need to check stop positions against the first GLLE. If we are
+      supposed to stop in a domain where the binary logs have already passed,
+      error.
+    */
+    if (!was_first_glle_processed)
+    {
+      size_t n_stop_gtid_ranges= domain_gtid_filter->get_num_stop_gtids();
+      rpl_gtid *stop_gtids= domain_gtid_filter->get_stop_gtids();
+      for (size_t i= 0; i < n_stop_gtid_ranges; i++)
       {
-        if (start_gtids[i].domain_id == glev->list[k].domain_id)
+        for (size_t k= 0; k < glev->count; k++)
         {
-          if (start_gtids[i].seq_no < glev->list[k].seq_no)
-            warning("A --start-position gtid %u-%u-%llu is deep inside of "
-                    "past binlog files; some of event groups of the domain %u "
-                    "may be missed from the expected output; the domain's gtid "
-                    "state of the current binlog file is %u-%u-%llu",
-                    PARAM_GTID(start_gtids[i]),
-                    glev->list[k].domain_id,
-                    PARAM_GTID(glev->list[k]));
-          break;
+          if (stop_gtids[i].domain_id == glev->list[k].domain_id)
+          {
+            /*
+              Seq_no of 0 has special meaning to ignore all events on a domain
+            */
+            if (stop_gtids[i].seq_no &&
+                stop_gtids[i].seq_no <= glev->list[k].seq_no)
+            {
+              error(
+                  "--stop-position gtid %u-%u-%llu does not exist in the "
+                  "specified binlog files. The gtid state of domain %u in the "
+                  "specified binary logs is %u-%u-%llu",
+                  PARAM_GTID(stop_gtids[i]), glev->list[k].domain_id,
+                  PARAM_GTID(glev->list[k]));
+              glle_state_invalid= TRUE;
+            }
+            break;
+          }
         }
       }
+      my_free(stop_gtids);
     }
-    size_t n_stop_gtid_ranges= domain_gtid_filter->get_num_stop_gtids();
-    rpl_gtid *stop_gtids= domain_gtid_filter->get_stop_gtids();
-    for (size_t i= 0; i < n_stop_gtid_ranges; i++)
-    {
-      for (size_t k= 0; k < glev->count; k++)
-      {
-        if (stop_gtids[i].domain_id == glev->list[k].domain_id)
-        {
-          if (stop_gtids[i].seq_no <= glev->list[k].seq_no)
-            warning("A --stop-position gtid %u-%u-%llu is deep inside of "
-                    "past binlog files so no output may be provided for "
-                    "the domain %u; the domain's gtid "
-                    "state of the current binlog file is %u-%u-%llu",
-                    PARAM_GTID(stop_gtids[i]),
-                    glev->list[k].domain_id,
-                    PARAM_GTID(glev->list[k]));
-          break;
-        }
-      }
-    }
-    my_free(start_gtids);
-    my_free(stop_gtids);
+
+    was_first_glle_processed= TRUE;
+
+    if (glle_state_invalid)
+      goto err;
   }
 
   if (ev_type == GTID_EVENT)
@@ -1103,8 +1132,15 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     /*
       GTID stream auditor performs the --gtid-strict-mode check
     */
-    if (gtid_stream_auditor && ev->is_event_group_active())
-      gtid_stream_auditor->record(&ev_gtid);
+    if (gtid_stream_auditor)
+    {
+      my_bool gtid_err= gtid_stream_auditor->record(&ev_gtid);
+      if(gtid_err && opt_gtid_strict_mode)
+      {
+        gtid_stream_auditor->report(stderr, opt_gtid_strict_mode);
+        goto err;
+      }
+    }
   }
 
   /*
@@ -2276,7 +2312,8 @@ get_one_option(const struct my_option *opt, const char *argument, const char *fi
       for (gtid_idx = 0; gtid_idx < n_start_gtid_ranges; gtid_idx++)
       {
         rpl_gtid *start_gtid= &start_gtids[gtid_idx];
-        if (domain_gtid_filter->add_start_gtid(start_gtid))
+        if (start_gtid->seq_no &&
+            domain_gtid_filter->add_start_gtid(start_gtid))
         {
           my_free(start_gtids);
           return 1;
@@ -2323,12 +2360,13 @@ static int parse_args(int *argc, char*** argv)
     start_position= UINT_MAX32;
   }
 
+  gtid_stream_auditor= new Gtid_stream_auditor();
+
   if (domain_gtid_filter)
+  {
     Log_event::enable_event_group_filtering();
 
-  if (opt_gtid_strict_mode)
-  {
-    if (domain_gtid_filter && domain_gtid_filter->validate_window_filters())
+    if (opt_gtid_strict_mode && domain_gtid_filter->validate_window_filters())
     {
       /*
         In strict mode, if any --start/stop-position GTID ranges are invalid,
@@ -2337,7 +2375,15 @@ static int parse_args(int *argc, char*** argv)
       */
       die();
     }
-    gtid_stream_auditor= new Gtid_stream_auditor();
+
+    /*
+      GTIDs before a start position shouldn't be validated, so we initialize
+      the stream auditor to only monitor GTIDs after these positions.
+    */
+    size_t n_start_gtids= domain_gtid_filter->get_num_start_gtids();
+    rpl_gtid *start_gtids= domain_gtid_filter->get_start_gtids();
+    gtid_stream_auditor->initialize_start_gtids(start_gtids, n_start_gtids);
+    my_free(start_gtids);
   }
 
   return 0;
@@ -3491,8 +3537,12 @@ int main(int argc, char** argv)
     free_tmpdir(&tmpdir);
   if (result_file && result_file != stdout)
     my_fclose(result_file, MYF(0));
-  if (opt_gtid_strict_mode && gtid_stream_auditor)
-    gtid_stream_auditor->report(stderr);
+
+  /* Ensure the GTID state is correct. If not, end in error */
+  if (retval != ERROR_STOP)
+    if (gtid_stream_auditor->report(stderr, opt_gtid_strict_mode))
+      retval= ERROR_STOP;
+
   cleanup();
   /* We cannot free DBUG, it is used in global destructors after exit(). */
   my_end(my_end_arg | MY_DONT_FREE_DBUG);
