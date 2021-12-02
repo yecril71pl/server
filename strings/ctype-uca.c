@@ -34408,7 +34408,7 @@ init_weight_level(MY_CHARSET_LOADER *loader, CHARSET_INFO *cs,
   for (i= 0; i != src->contractions.nitems; i++)
   {
     MY_CONTRACTION *item= &src->contractions.item[i];
-    uint length= my_wstrnlen(item->ch, array_elements(item->ch));
+    uint length= (uint)my_wstrnlen(item->ch, array_elements(item->ch));
     uint16 *weights= my_uca_init_one_contraction(&dst->contractions,
                                                  item->ch, length,
                                                  item->with_context);

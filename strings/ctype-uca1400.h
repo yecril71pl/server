@@ -31327,40 +31327,40 @@ static MY_CONTRACTION uca1400_contractions_secondary[939]={
 };
 
 
-static const uint uca1400_version= 1400; /* 14.0.0 */
+#define uca1400_version  1400
 
 /*
 [.0000.0000.0000]
 [.0000.0000.0000]
 */
-static const my_wc_t uca1400_tertiary_ignorable_first= 0x0000;
-static const my_wc_t uca1400_tertiary_ignorable_last= 0xE01EF;
+#define uca1400_tertiary_ignorable_first 0x0000
+#define uca1400_tertiary_ignorable_last 0xE01EF
 
 /*
 [.0000.0000.0000]
 [.0000.0000.0000]
 */
-static const my_wc_t uca1400_secondary_ignorable_first= 0x0000;
-static const my_wc_t uca1400_secondary_ignorable_last= 0xE01EF;
+#define uca1400_secondary_ignorable_first 0x0000
+#define uca1400_secondary_ignorable_last 0xE01EF
 
 /*
 [.0000.0021.0002]
 [.0000.0117.0002]
 */
-static const my_wc_t uca1400_primary_ignorable_first= 0x0332;
-static const my_wc_t uca1400_primary_ignorable_last= 0x101FD;
+#define uca1400_primary_ignorable_first 0x0332
+#define uca1400_primary_ignorable_last 0x101FD
 
 /*
 [.0201.0020.0002]
 [.2017.0020.0002]
 */
-static const my_wc_t uca1400_variable_first= 0x0009;
-static const my_wc_t uca1400_variable_last= 0x1D371;
+#define uca1400_variable_first 0x0009
+#define uca1400_variable_last 0x1D371
 
 /*
 [.0201.0020.0002]
 [.5E72.0020.0002]
 */
-static const my_wc_t uca1400_non_ignorable_first= 0x0009;
-static const my_wc_t uca1400_non_ignorable_last= 0x14646;
+#define uca1400_non_ignorable_first 0x0009
+#define uca1400_non_ignorable_last 0x14646
 

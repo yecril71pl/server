@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include "my_global.h"
 #include "m_ctype.h"
@@ -587,11 +588,12 @@ parse_weights(MY_DUCET_WEIGHT *dst, my_bool *is_variable, char *weight)
     for (s= weights[w]; *s ;)
     {
       char *endptr;
-      size_t part;
-      part= strtol(s+1,&endptr,16);
+      ulong part;
+      part= strtoul(s+1,&endptr,16);
       if (w == 0 && s[0] == '*')
         *is_variable= TRUE;
-      dst->weight[partnum][w]= part;
+      assert(part <= 0xFFFF);
+      dst->weight[partnum][w]= (uint16)part;
       s= endptr;
       partnum++;
     }
@@ -727,7 +729,8 @@ print_contraction_list(const MY_DUCET_CONTRACTION_LIST *src, uint level, const O
 int main(int ac, char **av)
 {
   char str[1024];
-  size_t code, w;
+  size_t code;
+  uint w;
   static MY_DUCET ducet;
   int pageloaded[MY_UCA_NPAGES];
   FILE *file;
@@ -816,7 +819,7 @@ int main(int ac, char **av)
     for (level= 0; level < 4; level++)
     {
       MY_UCA_IMPLICIT_WEIGHT weight;
-      weight= my_uca_implicit_weight_on_level(ducet.version, code, level);
+      weight= my_uca_implicit_weight_on_level(ducet.version, (my_wc_t)code, level);
       ducet.single_chars[code].weight.weight[level][0]= weight.weight[0];
       ducet.single_chars[code].weight.weight[level][1]= weight.weight[1];
     }
@@ -905,7 +908,7 @@ int main(int ac, char **av)
         default: mchars= ducet.single_chars[code].weight.weight_length;
       }
       
-      pagemaxlen[page]= maxnum;
+      pagemaxlen[page]= (int)maxnum;
 
 
       /*
