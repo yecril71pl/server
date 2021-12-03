@@ -1,8 +1,8 @@
 #
 # Purpose:
 #
-# This test ensures that the mariadb-binlog CLI tool properly displays warnings
-# when using --gtid-strict-mode
+# This test ensures that the mariadb-binlog CLI tool properly displays errors
+# and warnings for out of order GTIDs.
 #
 #
 # Methodology:
@@ -29,9 +29,14 @@
 #   Test Case 11) Strict mode warnings should be independent of
 #                 --start-timestamp option specification
 #
-# Note that test cases are tested with both --strict-gtid-mode and
-# --skip-gtid-strict-mode to ensure out of order warnings are hidden when not in
-# strict mode.
+# Note that test cases are tested under three scenarios:
+#  1) --gtid-strict-mode should error and immediately quit with error on out of
+#     order GTIDs
+#  2) --skip-gtid-strict-mode -vvv should not quit early or with error when
+#     encountering out of order GTIDs; however should produce warnings after
+#     binlog processing
+#  3) --skip-gtid-strict-mode should neither produce errors nor warnings when
+#     encountering out of order GTIDs
 #
 # References:
 #   MDEV-4989: Support for GTID in mysqlbinlog
@@ -51,18 +56,38 @@ RESET MASTER;
 
 --echo ####################################################
 --echo #      Test Case Group 1
---echo #      Run test cases with strict-gtid-mode
+--echo #
+--echo # Tests with --gtid-strict-mode should error and
+--echo # immediately quit with error on out of order GTIDs
 --echo ####################################################
 --let is_strict_mode= 1
+--let is_verbose= 0
 --let DEFAULT_ERROR_PREFIX=ERROR
 --source include/mysqlbinlog_gtid_strict_mode.inc
 
 --echo ####################################################
 --echo #      Test Case Group 2
---echo #      Run test cases with --skip-strict-gtid-mode
+--echo #
+--echo # Test cases with --skip-gtid-strict-mode -vvv
+--echo # should not quit early or with error when
+--echo # encountering out of order GTIDs; however should
+--echo # produce warnings after binlog processing
 --echo ####################################################
 --let is_strict_mode= 0
+--let is_verbose= 1
 --let DEFAULT_ERROR_PREFIX=WARNING
+--source include/mysqlbinlog_gtid_strict_mode.inc
+
+--echo ####################################################
+--echo #      Test Case Group 3
+--echo #
+--echo # Run test cases with --skip-gtid-strict-mode should
+--echo # neither produce errors nor warnings when
+--echo # encountering out of order GTIDs
+--echo ####################################################
+--let is_strict_mode= 0
+--let is_verbose= 0
+--let DEFAULT_ERROR_PREFIX=(ERROR|WARNING)
 --source include/mysqlbinlog_gtid_strict_mode.inc
 
 --echo ##############################

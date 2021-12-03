@@ -37,6 +37,9 @@ struct rpl_gtid
   uint64 seq_no;
 };
 
+/* Data structure to help with quick lookup for filters. */
+typedef decltype(rpl_gtid::domain_id) gtid_filter_identifier;
+
 inline bool operator==(const rpl_gtid& lhs, const rpl_gtid& rhs)
 {
   return
@@ -554,20 +557,12 @@ public:
 };
 
 /*
-  A filter implementation that passes through events between two GTIDs, m_start
-  (exclusive) and m_stop (inclusive).
+  A filter implementation that includes events that exist between two GTID
+  positions, m_start (exclusive) and m_stop (inclusive), within a domain.
 
-  This filter is stateful, such that it expects GTIDs to be a sequential
-  stream, and internally, the window will activate/deactivate when the start
+  This filter is stateful, such that it expects GTIDs to be an increasing
+  stream, and internally, the window will activate and deactivate when the start
   and stop positions of the event stream have passed through, respectively.
-
-  Window activation is used to permit events from the same domain id which fall
-  in-between m_start and m_stop, but are not from the same server id. For
-  example, consider the following event stream with GTIDs 0-1-1,0-2-1,0-1-2.
-  With m_start as 0-1-0 and m_stop as 0-1-2, we want 0-2-1 to be included in
-  this filter. Therefore, the window activates upon seeing 0-1-1, and allows
-  any GTIDs within this domain to pass through until 0-1-2 has been
-  encountered.
 */
 class Window_gtid_event_filter : public Gtid_event_filter
 {
@@ -671,12 +666,6 @@ private:
   rpl_gtid m_stop;
 };
 
-/*
-  Data structure to help with quick lookup for filters. More specifically,
-  if two filters have identifiers that lead to the same hash, they will be
-  put into a linked list.
-*/
-typedef uint32 gtid_filter_identifier;
 typedef struct _gtid_filter_element
 {
   Gtid_event_filter *filter;

@@ -62,6 +62,12 @@ INSERT INTO t3 VALUES (1);
 
 FLUSH LOGS;
 
+--echo # Gtid list event of the 2nd binlog file whose content is
+--echo # matched against --start-position in the following tests:
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 2)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+
 --let BINLOG_FILE= query_get_value(SHOW BINARY LOGS, Log_name, 1)
 --let BINLOG_FILE2= query_get_value(SHOW BINARY LOGS, Log_name, 2)
 
@@ -377,7 +383,7 @@ DROP TABLE t1;
 
 --echo #
 --echo #   Test Case 17:
---echo #   Start position with --start-timestamp=<T> where T occurs after the
+--echo #   Start position with --start-datetime=<T> where T occurs after the
 --echo # specified GTID results in no events before T
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24" | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24" | $MYSQL
@@ -425,6 +431,41 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
     die "t2 should not exist as binlog replay should not have any events from unspecified binlog file";
 }
 DROP TABLE t3;
+
+--echo #
+--echo #   Test Case 19:
+--echo #   Successive binary logs can be called with --stop-position and
+--echo # without --start-position
+if ($is_remote == 1)
+{
+    --echo #
+    --echo # Reset server state
+    RESET MASTER;
+    --exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE.orig | $MYSQL
+    FLUSH LOGS;
+    --exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE2.orig | $MYSQL
+    FLUSH LOGS;
+    --eval PURGE BINARY LOGS TO "$BINLOG_FILE2"
+    DROP TABLE t1;
+    DROP TABLE t2;
+    DROP TABLE t3;
+}
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --stop-position=0-1-4 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --stop-position=0-1-4 | $MYSQL
+if (`SELECT COUNT(*) FROM test.t3`)
+{
+    die $data_inconsistent_err;
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+{
+    die "t1 should not exist as binlog replay should not have any events from unspecified binlog file";
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+{
+    die "t2 should not exist as binlog replay should not have any events from unspecified binlog file";
+}
+DROP TABLE t3;
+
 
 if ($is_remote == 1)
 {

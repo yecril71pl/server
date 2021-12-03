@@ -37,6 +37,11 @@ SET @@session.server_id= 1;
 CREATE TABLE t3 (a int);
 INSERT INTO t3 VALUES (1);
 FLUSH LOGS;
+# Gtid list event of the 2nd binlog file whose content is
+# matched against --start-position in the following tests:
+show binlog events in 'master-bin.000002' limit 1,1;
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000002	#	Gtid_list	1	#	[1-3-4,1-2-5,0-1-3]
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
@@ -152,7 +157,7 @@ CREATE TABLE t1 (a int);
 DROP TABLE t1;
 #
 #   Test Case 17:
-#   Start position with --start-timestamp=<T> where T occurs after the
+#   Start position with --start-datetime=<T> where T occurs after the
 # specified GTID results in no events before T
 # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24" | MYSQL
 DROP TABLE t2;
@@ -163,6 +168,15 @@ DROP TABLE t2;
 # Gtid_list_log_event state
 # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3,1-2-5 | MYSQL
 DROP TABLE t3;
+#
+#   Test Case 19:
+#   Successive binary logs can be called with --stop-position and
+# without --start-position
+# MYSQL_BINLOG BINLOG_FILE_PARAM2 --stop-position=0-1-4 | MYSQL
+DROP TABLE t3;
+# At the following error cases analysis
+# note incompatible --start-position with the value of
+# Gtid list event of the 2nd binlog file printed above.
 #
 #   Error Case 1:
 #    A GTID --start-position that does not mention all domains that make
@@ -216,6 +230,11 @@ SET @@session.server_id= 1;
 CREATE TABLE t3 (a int);
 INSERT INTO t3 VALUES (1);
 FLUSH LOGS;
+# Gtid list event of the 2nd binlog file whose content is
+# matched against --start-position in the following tests:
+show binlog events in 'master-bin.000002' limit 1,1;
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000002	#	Gtid_list	1	#	[1-3-4,1-2-5,0-1-3]
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
@@ -331,7 +350,7 @@ CREATE TABLE t1 (a int);
 DROP TABLE t1;
 #
 #   Test Case 17:
-#   Start position with --start-timestamp=<T> where T occurs after the
+#   Start position with --start-datetime=<T> where T occurs after the
 # specified GTID results in no events before T
 # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=1-2-2 --start-datetime="1970-01-21 15:32:24" | MYSQL
 DROP TABLE t2;
@@ -352,11 +371,29 @@ DROP TABLE t3;
 # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3,1-2-5 | MYSQL
 DROP TABLE t3;
 #
+#   Test Case 19:
+#   Successive binary logs can be called with --stop-position and
+# without --start-position
+#
+# Reset server state
+RESET MASTER;
+FLUSH LOGS;
+FLUSH LOGS;
+PURGE BINARY LOGS TO "master-bin.000002";
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+# MYSQL_BINLOG BINLOG_FILE_PARAM2 --stop-position=0-1-4 | MYSQL
+DROP TABLE t3;
+#
 # Remote-only setup for error cases
 RESET MASTER;
 FLUSH LOGS;
 FLUSH LOGS;
 PURGE BINARY LOGS TO "master-bin.000002";
+# At the following error cases analysis
+# note incompatible --start-position with the value of
+# Gtid list event of the 2nd binlog file printed above.
 #
 #   Error Case 1:
 #    A GTID --start-position that does not mention all domains that make

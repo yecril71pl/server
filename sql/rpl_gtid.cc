@@ -3048,7 +3048,29 @@ void Gtid_stream_auditor::initialize_start_gtids(rpl_gtid *start_gtids,
   size_t i;
   for(i= 0; i < n_gtids; i++)
   {
-    struct audit_elem *audit_elem= (struct audit_elem *) my_malloc(
+    rpl_gtid *domain_state_gtid= &start_gtids[i];
+
+    /*
+      If we are initializing from a GLLE, we can have repeat domain ids from
+      differing servers, so we want to ensure our start gtid matches the last
+      known position
+    */
+    struct audit_elem *audit_elem= (struct audit_elem *) my_hash_search(
+        &m_audit_elem_domain_lookup,
+        (const uchar *) &(domain_state_gtid->domain_id), 0);
+    if (audit_elem)
+    {
+      /*
+        We have this domain already specified, so try to overwrite with the
+        more recent GTID
+      */
+      if (domain_state_gtid->seq_no > audit_elem->start_gtid.seq_no)
+        audit_elem->start_gtid = *domain_state_gtid;
+      continue;
+    }
+
+    /* Initialize a new domain */
+    audit_elem= (struct audit_elem *) my_malloc(
         PSI_NOT_INSTRUMENTED, sizeof(struct audit_elem), MYF(MY_WME));
     if (!audit_elem)
     {
@@ -3057,7 +3079,7 @@ void Gtid_stream_auditor::initialize_start_gtids(rpl_gtid *start_gtids,
     }
 
     audit_elem->domain_id= start_gtids[i].domain_id;
-    set_rpl_gtid(&(audit_elem->start_gtid), PARAM_GTID(start_gtids[i]));
+    audit_elem->start_gtid= start_gtids[i];
     set_rpl_gtid(&(audit_elem->last_gtid), audit_elem->domain_id, 0, 0);
 
     my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_real,
@@ -3079,6 +3101,14 @@ my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
 {
   size_t i;
   my_bool err= FALSE;
+
+  /*
+    We weren't initialized with starting positions explicitly, so assume the
+    starting positions of the current gtid state
+  */
+  if (!m_audit_elem_domain_lookup.records)
+    initialize_start_gtids(gtids, n_gtids);
+
   for(i= 0; i < n_gtids; i++)
   {
     rpl_gtid *domain_state_gtid= &gtids[i];
@@ -3110,7 +3140,7 @@ my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
     }
 
     if (domain_state_gtid->seq_no > audit_elem->last_gtid.seq_no)
-      set_rpl_gtid(&(audit_elem->last_gtid), PARAM_GTID((*domain_state_gtid)));
+      audit_elem->last_gtid= *domain_state_gtid;
   }
   return err;
 }
@@ -3164,8 +3194,8 @@ my_bool Gtid_stream_auditor::record(rpl_gtid *gtid)
     }
 
     audit_elem->domain_id= gtid->domain_id;
-    set_rpl_gtid(&(audit_elem->last_gtid), PARAM_GTID((*gtid)));
-    set_rpl_gtid(&(audit_elem->start_gtid), PARAM_GTID((*gtid)));
+    audit_elem->last_gtid= *gtid;
+    set_rpl_gtid(&(audit_elem->start_gtid), gtid->domain_id, 0, 0);
 
     my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_real,
                           sizeof(rpl_gtid), 8, 8, MYF(0));
@@ -3195,7 +3225,7 @@ my_bool Gtid_stream_auditor::record(rpl_gtid *gtid)
     else
     {
       /* GTID is valid */
-      set_rpl_gtid(&(audit_elem->last_gtid), PARAM_GTID((*gtid)));
+      audit_elem->last_gtid= *gtid;
     }
   }
 
@@ -3289,7 +3319,7 @@ int Window_gtid_event_filter::set_start_gtid(rpl_gtid *start)
   }
 
   m_has_start= TRUE;
-  set_rpl_gtid(&m_start, PARAM_GTID((*start)));
+  m_start= *start;
   return 0;
 }
 
@@ -3305,7 +3335,7 @@ int Window_gtid_event_filter::set_stop_gtid(rpl_gtid *stop)
   }
 
   m_has_stop= TRUE;
-  set_rpl_gtid(&m_stop, PARAM_GTID((*stop)));
+  m_stop= *stop;
   return 0;
 }
 
@@ -3641,7 +3671,7 @@ rpl_gtid *Domain_gtid_event_filter::get_start_gtids()
         (Window_gtid_event_filter *) fe->filter;
 
     rpl_gtid win_start_gtid= wgef->get_start_gtid();
-    set_rpl_gtid(&gtid_list[i], PARAM_GTID(win_start_gtid));
+    gtid_list[i]= win_start_gtid;
   }
 
   return gtid_list;
@@ -3666,7 +3696,7 @@ rpl_gtid *Domain_gtid_event_filter::get_stop_gtids()
         (Window_gtid_event_filter *) fe->filter;
 
     rpl_gtid win_stop_gtid= wgef->get_stop_gtid();
-    set_rpl_gtid(&gtid_list[i], PARAM_GTID(win_stop_gtid));
+    gtid_list[i]= win_stop_gtid;
   }
 
   return gtid_list;

@@ -17,6 +17,10 @@ if ($is_strict_mode == 1)
 {
   --let BINLOG_STRICT_MODE_PARAM=--gtid-strict-mode
 }
+if ($is_verbose == 1)
+{
+  --let BINLOG_STRICT_MODE_PARAM=$BINLOG_STRICT_MODE_PARAM -vvv
+}
 
 --let $log_error_ = $MYSQLTEST_VARDIR/tmp/out.err
 --let SEARCH_FILE=$log_error_
@@ -77,7 +81,7 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
 --remove_file $log_error_
 DROP TABLE t1;
@@ -100,7 +104,7 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
 --remove_file $log_error_
 DROP TABLE t1;
@@ -123,7 +127,7 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
 --remove_file $log_error_
 DROP TABLE t1;
@@ -154,7 +158,7 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
 --remove_file $log_error_
 DROP TABLE t1;
@@ -184,7 +188,6 @@ FLUSH LOGS;
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-4 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
 --let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
 --source include/search_pattern_in_file.inc
---cat_file $log_error_
 
 --echo # Position-based start-position
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=start_binlog_pos $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
@@ -219,15 +222,16 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-6 $BINLOG_STRICT_MODE_PARAM > log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-6 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
 
 --echo # Position-based window
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=start_binlog_pos --stop-position=stop_binlog_pos $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=$start_binlog_pos --stop-position=$stop_binlog_pos $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
+
 --remove_file $log_error_
 DROP TABLE t1;
 RESET MASTER;
@@ -236,18 +240,26 @@ RESET MASTER;
 --echo #   Test Case 9:
 --echo #   Error if --stop-position is not strictly greater than
 --echo # --start-position
+--echo #
+--echo # Note: Error is only displayed in strict mode, -vvv has no effect here
 FLUSH LOGS;
---echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM > OUT_FILE
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
---exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM > $OUT_FILE
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
+--let SEARCH_PATTERN=ERROR: Queried GTID range is invalid in strict mode
+--source include/search_pattern_in_file.inc
 
---echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM > OUT_FILE
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
---exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM > $OUT_FILE
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
+--let SEARCH_PATTERN=ERROR: Queried GTID range is invalid in strict mode
+--source include/search_pattern_in_file.inc
 
---echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 $BINLOG_STRICT_MODE_PARAM > OUT_FILE
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
---exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 $BINLOG_STRICT_MODE_PARAM > $OUT_FILE
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
+--let SEARCH_PATTERN=ERROR: Queried GTID range is invalid in strict mode
+--source include/search_pattern_in_file.inc
 RESET MASTER;
 
 --echo #
@@ -269,7 +281,7 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --offset=8 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --offset=8 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
 --remove_file $log_error_
 DROP TABLE t1;
@@ -299,7 +311,7 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --start-datetime="1970-01-21 15:32:24" $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --start-datetime="1970-01-21 15:32:24" $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX
+--let SEARCH_PATTERN=$DEFAULT_ERROR_PREFIX: Found out of order GTID
 --source include/search_pattern_in_file.inc
 --remove_file $log_error_
 DROP TABLE t1;

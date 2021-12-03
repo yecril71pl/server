@@ -1018,6 +1018,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
   char ll_buff[21];
   Log_event_type ev_type= ev->get_type_code();
   my_bool destroy_evt= TRUE;
+  my_bool gtid_err= FALSE;
   DBUG_ENTER("process_event");
   Exit_status retval= OK_CONTINUE;
   IO_CACHE *const head= &print_event_info->head_cache;
@@ -1038,7 +1039,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
 #endif
 
   /* Run time estimation of the output window configuration. */
-  if (ev_type == GTID_LIST_EVENT && is_gtid_filtering_enabled() && ev->when)
+  if (ev_type == GTID_LIST_EVENT && ev->when)
   {
     Gtid_list_log_event *glev= (Gtid_list_log_event *)ev;
 
@@ -1046,7 +1047,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       If this is the first Gtid_list_log_event, initialize the state of the
       GTID stream auditor to be consistent with the binary logs provided
     */
-    if (glev->count && !was_first_glle_processed &&
+    if (gtid_stream_auditor && !was_first_glle_processed && glev->count &&
         gtid_stream_auditor->initialize_gtid_state(stderr, glev->list,
                                                    glev->count))
       goto err;
@@ -1057,10 +1058,13 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       a user may have accidentally left out a log file to process.
     */
     my_bool glle_state_invalid= FALSE;
-    for (size_t k= 0; k < glev->count; k++)
+    if (gtid_stream_auditor)
     {
-      if (gtid_stream_auditor->verify_gtid_state(stderr, &(glev->list[k])))
-        glle_state_invalid= TRUE;
+      for (size_t k= 0; k < glev->count; k++)
+      {
+        if (gtid_stream_auditor->verify_gtid_state(stderr, &(glev->list[k])))
+          glle_state_invalid= TRUE;
+      }
     }
 
     /*
@@ -1068,7 +1072,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       supposed to stop in a domain where the binary logs have already passed,
       error.
     */
-    if (!was_first_glle_processed)
+    if (!was_first_glle_processed && domain_gtid_filter)
     {
       size_t n_stop_gtid_ranges= domain_gtid_filter->get_num_stop_gtids();
       rpl_gtid *stop_gtids= domain_gtid_filter->get_stop_gtids();
@@ -1124,21 +1128,40 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       }
 
       if (!domain_gtid_filter->exclude(&ev_gtid))
-        ev->activate_current_event_group();
+        print_event_info->activate_current_event_group();
       else
-        ev->deactivate_current_event_group();
+        print_event_info->deactivate_current_event_group();
     }
 
     /*
-      GTID stream auditor performs the --gtid-strict-mode check
+      Where we always ensure the initial binlog state is valid, we only
+      continually monitor the GTID stream for validity if we are in GTID
+      strict mode (for errors) or if three levels of verbosity is provided
+      (for warnings).
+
+      If we don't care about ensuring GTID validity, just delete the auditor
+      object to disable it for future checks.
     */
     if (gtid_stream_auditor)
     {
-      my_bool gtid_err= gtid_stream_auditor->record(&ev_gtid);
-      if(gtid_err && opt_gtid_strict_mode)
+      if (!(opt_gtid_strict_mode || verbose >= 3))
       {
-        gtid_stream_auditor->report(stderr, opt_gtid_strict_mode);
-        goto err;
+        delete gtid_stream_auditor;
+
+        /*
+          Explicitly reset to NULL to simplify checks on if auditing is enabled
+          i.e. if it is defined, assume we want to use it
+        */
+        gtid_stream_auditor= NULL;
+      }
+      else
+      {
+        gtid_err= gtid_stream_auditor->record(&ev_gtid);
+        if (gtid_err && opt_gtid_strict_mode)
+        {
+          gtid_stream_auditor->report(stderr, opt_gtid_strict_mode);
+          goto err;
+        }
       }
     }
   }
@@ -1147,7 +1170,8 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     If the GTID is ignored, it shouldn't count towards offset (rec_count should
     not be incremented)
   */
-  if (!ev->is_event_group_active() && ev_type != FORMAT_DESCRIPTION_EVENT)
+  if (!print_event_info->is_event_group_active() &&
+      ev_type != FORMAT_DESCRIPTION_EVENT)
     goto end_skip_count;
 
   /*
@@ -1845,7 +1869,9 @@ that may lead to an endless loop.",
    &user, &user, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0,
    0, 0},
   {"verbose", 'v', "Reconstruct SQL statements out of row events. "
-                   "-v -v adds comments on column data types.",
+                   "-v -v adds comments on column data types. "
+                   "-v -v -v adds diagnostic warnings about event "
+                   "integrity before program exit.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"version", 'V', "Print version and exit.", 0, 0, 0, GET_NO_ARG, NO_ARG, 0,
    0, 0, 0, 0, 0},
@@ -1972,7 +1998,8 @@ static void cleanup()
   free_root(&glob_root, MYF(0));
 
   delete domain_gtid_filter;
-  delete gtid_stream_auditor;
+  if (gtid_stream_auditor)
+    delete gtid_stream_auditor;
 
   delete binlog_filter;
   delete glob_description_event;
@@ -2360,12 +2387,16 @@ static int parse_args(int *argc, char*** argv)
     start_position= UINT_MAX32;
   }
 
+  /*
+    Always initialize the stream auditor initially because it is used to check
+    the initial state of the binary log is correct. If we don't want it later
+    (i.e. --skip-gtid-strict-mode or -vvv is not given), it is deleted when we
+    are certain the initial gtid state is set.
+  */
   gtid_stream_auditor= new Gtid_stream_auditor();
 
   if (domain_gtid_filter)
   {
-    Log_event::enable_event_group_filtering();
-
     if (opt_gtid_strict_mode && domain_gtid_filter->validate_window_filters())
     {
       /*
@@ -2466,6 +2497,9 @@ static Exit_status dump_log_entries(const char* logname)
 
   if (!print_event_info.init_ok())
     return ERROR_STOP;
+
+  if (domain_gtid_filter)
+    print_event_info.enable_event_group_filtering();
   /*
      Set safe delimiter, to dump things
      like CREATE PROCEDURE safely
@@ -3538,10 +3572,16 @@ int main(int argc, char** argv)
   if (result_file && result_file != stdout)
     my_fclose(result_file, MYF(0));
 
-  /* Ensure the GTID state is correct. If not, end in error */
-  if (retval != ERROR_STOP)
-    if (gtid_stream_auditor->report(stderr, opt_gtid_strict_mode))
-      retval= ERROR_STOP;
+  /*
+    Ensure the GTID state is correct. If not, end in error.
+
+    Note that in gtid strict mode, we will not report here if any invalid GTIDs
+    are processed because it immediately errors (i.e. retval will be
+    ERROR_STOP)
+  */
+  if (retval != ERROR_STOP && gtid_stream_auditor &&
+      gtid_stream_auditor->report(stderr, opt_gtid_strict_mode))
+    retval= ERROR_STOP;
 
   cleanup();
   /* We cannot free DBUG, it is used in global destructors after exit(). */
