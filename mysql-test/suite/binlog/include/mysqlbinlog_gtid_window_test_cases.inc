@@ -447,29 +447,63 @@ if ($is_remote == 1)
 --echo # At the following error cases analysis
 --echo # note incompatible --start-position with the value of
 --echo # Gtid list event of the 2nd binlog file printed above.
+
+--let err_out_= $MYSQLTEST_VARDIR/tmp/err.out
+--let SEARCH_FILE=$err_out_
+
 --echo #
 --echo #   Error Case 1:
 --echo #    A GTID --start-position that does not mention all domains that make
 --echo # up the binary log state should error
---echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3 > tmp_out_
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3 > tmp_out_ 2> err_out_
 --error 1
---exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-3 > $tmp_out_
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-3 > $tmp_out_ 2> $err_out_
+if ($is_remote == 1)
+{
+    --let SEARCH_PATTERN=ERROR: Got error reading packet from server
+}
+if ($is_remote == 0)
+{
+    --let SEARCH_PATTERN=ERROR: Found unrecognized GTID
+}
+--source include/search_pattern_in_file.inc
+--remove_file $err_out_
 
 --echo #
 --echo #   Error Case 2:
 --echo #   A GTID --start-position with any sequence numbers which occur before
 --echo # the binary log state should result in error
---echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-2,1-2-5 > tmp_out_
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-2,1-2-5 > tmp_out_ 2> err_out_
 --error 1
---exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-2,1-2-5 > $tmp_out_
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-2,1-2-5 > $tmp_out_ 2> $err_out_
+if ($is_remote == 1)
+{
+    --let SEARCH_PATTERN=ERROR: Got error reading packet from server
+}
+if ($is_remote == 0)
+{
+    --let SEARCH_PATTERN=ERROR: Binary logs are missing data for domain 0
+}
+--source include/search_pattern_in_file.inc
+--remove_file $err_out_
 
 --echo #
 --echo #   Error Case 3:
 --echo #   A GTID --start-position with any sequence numbers that are not
 --echo # eventually processed results in error
---echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-8,1-2-6 > tmp_out_
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-8,1-2-6 > tmp_out_ 2> err_out_
 --error 1
---exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-8,1-2-6 > $tmp_out_
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM2 --start-position=0-1-8,1-2-6 > $tmp_out_ 2> $err_out_
+if ($is_remote == 1)
+{
+    --let SEARCH_PATTERN=ERROR: Got error reading packet from server
+}
+if ($is_remote == 0)
+{
+    --let SEARCH_PATTERN=ERROR: Binary logs never reached expected GTID state
+}
+--source include/search_pattern_in_file.inc
+--remove_file $err_out_
 
 if ($is_remote == 1)
 {

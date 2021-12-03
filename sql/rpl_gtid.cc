@@ -3091,7 +3091,7 @@ my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
     {
       Gtid_stream_auditor::error(
           out, "Found unrecognized GTID state %u-%u-%llu in binary logs.",
-          domain_state_gtid->domain_id, PARAM_GTID((*domain_state_gtid)));
+          PARAM_GTID((*domain_state_gtid)));
       err= TRUE;
       continue;
     }
