@@ -12,12 +12,12 @@
 
 ## Initialize test data
 #
+set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
+SET timestamp=@a;
 RESET MASTER;
 SET @@session.gtid_domain_id= 0;
 SET @@session.server_id= 1;
 --let $empty_binlog_pos= query_get_value(SHOW MASTER STATUS,Position, 1)
-set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
-SET timestamp=@a;
 CREATE TABLE t1 (a int);
 SET timestamp=@a+1;
 INSERT INTO t1 values (1), (2);
@@ -369,8 +369,8 @@ DROP TABLE t1;
 # --offset specification
 CREATE TABLE t1 (a int);
 
---echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=4 | MYSQL
---exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=4 | $MYSQL
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=5 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=5 | $MYSQL
 if ($test2_t1_mid_checksum != `CHECKSUM TABLE t1`)
 {
     die $data_inconsistent_err;

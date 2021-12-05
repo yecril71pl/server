@@ -150,7 +150,7 @@ static ulonglong start_position= BIN_LOG_HEADER_SIZE,
 #define start_position_mot ((my_off_t)start_position)
 #define stop_position_mot  ((my_off_t)stop_position)
 
-static Gtid_stream_auditor *gtid_stream_auditor= NULL;
+static Binlog_gtid_state_validator *gtid_state_validator= NULL;
 static Domain_gtid_event_filter *domain_gtid_filter= NULL;
 
 static char *start_datetime_str, *stop_datetime_str;
@@ -1029,8 +1029,11 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     provided by --start-position and --stop-position), and the true start of
     the specified binary logs. The first GLLE provides the initial state of the
     binary logs.
+
+    If --start-position is provided as a file offset, we don't want to skip
+    initial GTID state verification
   */
-  static my_bool was_first_glle_processed= FALSE;
+  static my_bool was_first_glle_processed= start_position > BIN_LOG_HEADER_SIZE;
 
   /* Bypass flashback settings to event */
   ev->is_flashback= opt_flashback;
@@ -1038,7 +1041,12 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
   ev->need_flashback_review= opt_flashback_review;
 #endif
 
-  /* Run time estimation of the output window configuration. */
+  /*
+    Run time estimation of the output window configuration.
+
+    Do not validate GLLE information is start position is provided as a file
+    offset.
+  */
   if (ev_type == GTID_LIST_EVENT && ev->when)
   {
     Gtid_list_log_event *glev= (Gtid_list_log_event *)ev;
@@ -1047,66 +1055,40 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       If this is the first Gtid_list_log_event, initialize the state of the
       GTID stream auditor to be consistent with the binary logs provided
     */
-    if (gtid_stream_auditor && !was_first_glle_processed && glev->count &&
-        gtid_stream_auditor->initialize_gtid_state(stderr, glev->list,
-                                                   glev->count))
-      goto err;
+    if (gtid_state_validator && !was_first_glle_processed && glev->count)
+    {
+      if (gtid_state_validator->initialize_gtid_state(stderr, glev->list,
+                                                     glev->count))
+        goto err;
+
+      if (domain_gtid_filter && !domain_gtid_filter->get_num_start_gtids())
+      {
+        /*
+          We need to validate the GTID list from --stop-position because we
+          couldn't prove it intrinsically (i.e. using stop > start)
+        */
+        rpl_gtid *stop_gtids= domain_gtid_filter->get_stop_gtids();
+        size_t n_stop_gtids= domain_gtid_filter->get_num_stop_gtids();
+        if (gtid_state_validator->verify_stop_state(stderr, stop_gtids,
+                                                    n_stop_gtids))
+        {
+          my_free(stop_gtids);
+          goto err;
+        }
+        my_free(stop_gtids);
+      }
+    }
 
     /*
       Verify that we are able to process events from this binlog. For example,
       if our current GTID state is behind the state of the GLLE in the new log,
       a user may have accidentally left out a log file to process.
     */
-    my_bool glle_state_invalid= FALSE;
-    if (gtid_stream_auditor)
-    {
+    if (gtid_state_validator && verbose >= 3)
       for (size_t k= 0; k < glev->count; k++)
-      {
-        if (gtid_stream_auditor->verify_gtid_state(stderr, &(glev->list[k])))
-          glle_state_invalid= TRUE;
-      }
-    }
-
-    /*
-      We only need to check stop positions against the first GLLE. If we are
-      supposed to stop in a domain where the binary logs have already passed,
-      error.
-    */
-    if (!was_first_glle_processed && domain_gtid_filter)
-    {
-      size_t n_stop_gtid_ranges= domain_gtid_filter->get_num_stop_gtids();
-      rpl_gtid *stop_gtids= domain_gtid_filter->get_stop_gtids();
-      for (size_t i= 0; i < n_stop_gtid_ranges; i++)
-      {
-        for (size_t k= 0; k < glev->count; k++)
-        {
-          if (stop_gtids[i].domain_id == glev->list[k].domain_id)
-          {
-            /*
-              Seq_no of 0 has special meaning to ignore all events on a domain
-            */
-            if (stop_gtids[i].seq_no &&
-                stop_gtids[i].seq_no <= glev->list[k].seq_no)
-            {
-              error(
-                  "--stop-position gtid %u-%u-%llu does not exist in the "
-                  "specified binlog files. The gtid state of domain %u in the "
-                  "specified binary logs is %u-%u-%llu",
-                  PARAM_GTID(stop_gtids[i]), glev->list[k].domain_id,
-                  PARAM_GTID(glev->list[k]));
-              glle_state_invalid= TRUE;
-            }
-            break;
-          }
-        }
-      }
-      my_free(stop_gtids);
-    }
+        gtid_state_validator->verify_gtid_state(stderr, &(glev->list[k]));
 
     was_first_glle_processed= TRUE;
-
-    if (glle_state_invalid)
-      goto err;
   }
 
   if (ev_type == GTID_EVENT)
@@ -1142,24 +1124,24 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       If we don't care about ensuring GTID validity, just delete the auditor
       object to disable it for future checks.
     */
-    if (gtid_stream_auditor)
+    if (gtid_state_validator)
     {
       if (!(opt_gtid_strict_mode || verbose >= 3))
       {
-        delete gtid_stream_auditor;
+        delete gtid_state_validator;
 
         /*
           Explicitly reset to NULL to simplify checks on if auditing is enabled
           i.e. if it is defined, assume we want to use it
         */
-        gtid_stream_auditor= NULL;
+        gtid_state_validator= NULL;
       }
       else
       {
-        gtid_err= gtid_stream_auditor->record(&ev_gtid);
+        gtid_err= gtid_state_validator->record(&ev_gtid);
         if (gtid_err && opt_gtid_strict_mode)
         {
-          gtid_stream_auditor->report(stderr, opt_gtid_strict_mode);
+          gtid_state_validator->report(stderr, opt_gtid_strict_mode);
           goto err;
         }
       }
@@ -1170,8 +1152,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     If the GTID is ignored, it shouldn't count towards offset (rec_count should
     not be incremented)
   */
-  if (!print_event_info->is_event_group_active() &&
-      ev_type != FORMAT_DESCRIPTION_EVENT)
+  if (!print_event_info->is_event_group_active())
     goto end_skip_count;
 
   /*
@@ -1998,8 +1979,8 @@ static void cleanup()
   free_root(&glob_root, MYF(0));
 
   delete domain_gtid_filter;
-  if (gtid_stream_auditor)
-    delete gtid_stream_auditor;
+  if (gtid_state_validator)
+    delete gtid_state_validator;
 
   delete binlog_filter;
   delete glob_description_event;
@@ -2393,7 +2374,7 @@ static int parse_args(int *argc, char*** argv)
     (i.e. --skip-gtid-strict-mode or -vvv is not given), it is deleted when we
     are certain the initial gtid state is set.
   */
-  gtid_stream_auditor= new Gtid_stream_auditor();
+  gtid_state_validator= new Binlog_gtid_state_validator();
 
   if (domain_gtid_filter)
   {
@@ -2413,7 +2394,7 @@ static int parse_args(int *argc, char*** argv)
     */
     size_t n_start_gtids= domain_gtid_filter->get_num_start_gtids();
     rpl_gtid *start_gtids= domain_gtid_filter->get_start_gtids();
-    gtid_stream_auditor->initialize_start_gtids(start_gtids, n_start_gtids);
+    gtid_state_validator->initialize_start_gtids(start_gtids, n_start_gtids);
     my_free(start_gtids);
   }
 
@@ -3579,8 +3560,8 @@ int main(int argc, char** argv)
     are processed because it immediately errors (i.e. retval will be
     ERROR_STOP)
   */
-  if (retval != ERROR_STOP && gtid_stream_auditor &&
-      gtid_stream_auditor->report(stderr, opt_gtid_strict_mode))
+  if (retval != ERROR_STOP && gtid_state_validator &&
+      gtid_state_validator->report(stderr, opt_gtid_strict_mode))
     retval= ERROR_STOP;
 
   cleanup();

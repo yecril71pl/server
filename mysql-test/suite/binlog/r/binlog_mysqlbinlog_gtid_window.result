@@ -6,11 +6,11 @@ RESET MASTER;
 #      Test Group 1
 #      Run test cases on local log file
 ######################################
+set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
+SET timestamp=@a;
 RESET MASTER;
 SET @@session.gtid_domain_id= 0;
 SET @@session.server_id= 1;
-set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
-SET timestamp=@a;
 CREATE TABLE t1 (a int);
 SET timestamp=@a+1;
 INSERT INTO t1 values (1), (2);
@@ -153,7 +153,7 @@ DROP TABLE t1;
 #   Start position with --offset=<n> skips n events after the first
 # GTID is found
 CREATE TABLE t1 (a int);
-# MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=4 | MYSQL
+# MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=5 | MYSQL
 DROP TABLE t1;
 #
 #   Test Case 17:
@@ -199,11 +199,11 @@ FOUND 2 /ERROR: Binary logs never reached expected GTID state/ in err.out
 #      Test Group 2
 #      Run test cases on remote host
 ######################################
+set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
+SET timestamp=@a;
 RESET MASTER;
 SET @@session.gtid_domain_id= 0;
 SET @@session.server_id= 1;
-set @a=UNIX_TIMESTAMP("1970-01-21 15:32:22");
-SET timestamp=@a;
 CREATE TABLE t1 (a int);
 SET timestamp=@a+1;
 INSERT INTO t1 values (1), (2);
@@ -346,7 +346,7 @@ DROP TABLE t1;
 #   Start position with --offset=<n> skips n events after the first
 # GTID is found
 CREATE TABLE t1 (a int);
-# MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=4 | MYSQL
+# MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-0 --stop-position=0-1-2 --offset=5 | MYSQL
 DROP TABLE t1;
 #
 #   Test Case 17:
@@ -430,42 +430,6 @@ RESET MASTER;
 #   Error Case 5:
 #   User provides GTID ranges with repeated domain ids
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1,0-1-8 --stop-position=0-1-4,0-1-12
-#
-#   Error Case 6:
-#   If multiple binary logs should be specified but a middle log is
-# missing, we should detect that and error
-RESET MASTER;
-SET @@session.gtid_domain_id= 0;
-SET @@session.server_id= 1;
-CREATE TABLE t1 (a int);
-FLUSH LOGS;
-INSERT INTO t1 values (1);
-SET @@session.gtid_domain_id= 1;
-SET @@session.server_id= 2;
-CREATE TABLE t2 (a int);
-FLUSH LOGS;
-SET @@session.gtid_domain_id= 2;
-SET @@session.server_id= 3;
-CREATE TABLE t3 (a int);
-FLUSH LOGS;
-# GLLE from each log for state reference
-show binlog events in 'master-bin.000001' limit 1,1;
-Log_name	Pos	Event_type	Server_id	End_log_pos	Info
-master-bin.000001	#	Gtid_list	1	#	[]
-show binlog events in 'master-bin.000002' limit 1,1;
-Log_name	Pos	Event_type	Server_id	End_log_pos	Info
-master-bin.000002	#	Gtid_list	1	#	[0-1-1]
-show binlog events in 'master-bin.000003' limit 1,1;
-Log_name	Pos	Event_type	Server_id	End_log_pos	Info
-master-bin.000003	#	Gtid_list	1	#	[1-2-1,0-1-2]
-# MYSQL_BINLOG MYSQLD_DATADIR/BINLOG_FILE1 MYSQLD_DATADIR/BINLOG_FILE3 2> err_out_ > tmp_out_
-# We should have two errors about missing data from domains 0 and 1
-FOUND 1 /ERROR: Binary logs are missing data for domain 0[^\n]+the last seen event was/ in err.out
-FOUND 1 /ERROR: Binary logs are missing data for domain 1[^\n]+neither the starting GTID position list nor any processed events/ in err.out
-DROP TABLE t1;
-DROP TABLE t2;
-DROP TABLE t3;
-RESET MASTER;
 ##############################
 #      Cleanup
 ##############################

@@ -2980,27 +2980,27 @@ gtid_waiting::remove_from_wait_queue(gtid_waiting::hash_element *he,
 
 void free_domain_lookup_element(void *p)
 {
-  struct Gtid_stream_auditor::audit_elem *audit_elem=
-      (struct Gtid_stream_auditor::audit_elem *) p;
+  struct Binlog_gtid_state_validator::audit_elem *audit_elem=
+      (struct Binlog_gtid_state_validator::audit_elem *) p;
   delete_dynamic(&audit_elem->late_gtids_previous);
   delete_dynamic(&audit_elem->late_gtids_real);
   my_free(audit_elem);
 }
 
-Gtid_stream_auditor::Gtid_stream_auditor()
+Binlog_gtid_state_validator::Binlog_gtid_state_validator()
 {
   my_hash_init(PSI_INSTRUMENT_ME, &m_audit_elem_domain_lookup, &my_charset_bin, 32,
                offsetof(struct audit_elem, domain_id), sizeof(uint32),
                NULL, free_domain_lookup_element, HASH_UNIQUE);
 }
 
-Gtid_stream_auditor::~Gtid_stream_auditor()
+Binlog_gtid_state_validator::~Binlog_gtid_state_validator()
 {
   my_hash_free(&m_audit_elem_domain_lookup);
 }
 
-void Gtid_stream_auditor::initialize_start_gtids(rpl_gtid *start_gtids,
-                                                 size_t n_gtids)
+void Binlog_gtid_state_validator::initialize_start_gtids(rpl_gtid *start_gtids,
+                                                         size_t n_gtids)
 {
   size_t i;
   for(i= 0; i < n_gtids; i++)
@@ -3053,8 +3053,9 @@ void Gtid_stream_auditor::initialize_start_gtids(rpl_gtid *start_gtids,
   }
 }
 
-my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
-                                                   size_t n_gtids)
+my_bool Binlog_gtid_state_validator::initialize_gtid_state(FILE *out,
+                                                           rpl_gtid *gtids,
+                                                           size_t n_gtids)
 {
   size_t i;
   my_bool err= FALSE;
@@ -3076,7 +3077,7 @@ my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
 
     if (!audit_elem)
     {
-      Gtid_stream_auditor::error(
+      Binlog_gtid_state_validator::error(
           out,
           "Starting GTID position list does not specify an initial value "
           "for domain %u, whose events may be present in the requested binlog "
@@ -3088,7 +3089,7 @@ my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
 
     if (audit_elem->start_gtid.seq_no < domain_state_gtid->seq_no)
     {
-      Gtid_stream_auditor::error(
+      Binlog_gtid_state_validator::error(
           out,
           "Binary logs are missing data for domain %u. Expected data to "
           "start from state %u-%u-%llu; however, the initial GTID state of "
@@ -3105,7 +3106,42 @@ my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
   return err;
 }
 
-my_bool Gtid_stream_auditor::verify_gtid_state(FILE *out,
+my_bool Binlog_gtid_state_validator::verify_stop_state(FILE *out,
+                                                       rpl_gtid *stop_gtids,
+                                                       size_t n_stop_gtids)
+{
+  size_t i;
+  for(i= 0; i < n_stop_gtids; i++)
+  {
+    rpl_gtid *stop_gtid= &stop_gtids[i];
+
+    struct audit_elem *audit_elem= (struct audit_elem *) my_hash_search(
+        &m_audit_elem_domain_lookup,
+        (const uchar *) &(stop_gtid->domain_id), 0);
+
+    /*
+      It is okay if stop gtid doesn't exist in current state because it will be treated
+      as a new domain
+    */
+    if (audit_elem && stop_gtid->seq_no <= audit_elem->start_gtid.seq_no)
+    {
+      Binlog_gtid_state_validator::error(
+          out,
+          "--stop-position GTID %u-%u-%llu does not exist in the "
+          "specified binlog files. The current GTID state of domain %u in the "
+          "specified binary logs is %u-%u-%llu",
+          PARAM_GTID((*stop_gtid)), stop_gtid->domain_id,
+          PARAM_GTID(audit_elem->start_gtid));
+      return TRUE;
+    }
+  }
+
+  /* No issues with any GTIDs */
+  return FALSE;
+}
+
+my_bool
+Binlog_gtid_state_validator::verify_gtid_state(FILE *out,
                                                rpl_gtid *domain_state_gtid)
 {
   struct audit_elem *audit_elem= (struct audit_elem *) my_hash_search(
@@ -3114,12 +3150,13 @@ my_bool Gtid_stream_auditor::verify_gtid_state(FILE *out,
 
   if (!audit_elem)
   {
-    Gtid_stream_auditor::error(
+    Binlog_gtid_state_validator::warn(
         out,
         "Binary logs are missing data for domain %u. The current binary log "
         "specified its "
         "current state for this domain as %u-%u-%llu, but neither the "
-        "starting GTID position list nor any processed events have mentioned "
+        "starting GTID position list nor any processed events have "
+        "mentioned "
         "this domain.",
         domain_state_gtid->domain_id, PARAM_GTID((*domain_state_gtid)));
     return TRUE;
@@ -3127,7 +3164,7 @@ my_bool Gtid_stream_auditor::verify_gtid_state(FILE *out,
 
   if (audit_elem->last_gtid.seq_no < domain_state_gtid->seq_no)
   {
-    Gtid_stream_auditor::error(
+    Binlog_gtid_state_validator::warn(
         out,
         "Binary logs are missing data for domain %u. The current binary log "
         "state is %u-%u-%llu, but the last seen event was %u-%u-%llu.",
@@ -3139,7 +3176,7 @@ my_bool Gtid_stream_auditor::verify_gtid_state(FILE *out,
   return FALSE;
 }
 
-my_bool Gtid_stream_auditor::record(rpl_gtid *gtid)
+my_bool Binlog_gtid_state_validator::record(rpl_gtid *gtid)
 {
   struct audit_elem *audit_elem= (struct audit_elem *) my_hash_search(
       &m_audit_elem_domain_lookup, (const uchar *) &(gtid->domain_id), 0);
@@ -3210,8 +3247,8 @@ struct gtid_report_ctx
 
 static my_bool report_audit_findings(void *entry, void *report_ctx_arg)
 {
-  struct Gtid_stream_auditor::audit_elem *audit_el=
-      (struct Gtid_stream_auditor::audit_elem *) entry;
+  struct Binlog_gtid_state_validator::audit_elem *audit_el=
+      (struct Binlog_gtid_state_validator::audit_elem *) entry;
 
   struct gtid_report_ctx *report_ctx=
       (struct gtid_report_ctx *) report_ctx_arg;
@@ -3221,9 +3258,9 @@ static my_bool report_audit_findings(void *entry, void *report_ctx_arg)
   void (*report_f)(FILE*, const char*, ...);
 
   if (is_strict_mode)
-    report_f= Gtid_stream_auditor::error;
+    report_f= Binlog_gtid_state_validator::error;
   else
-    report_f= Gtid_stream_auditor::warn;
+    report_f= Binlog_gtid_state_validator::warn;
 
   if (audit_el)
   {
@@ -3254,7 +3291,7 @@ static my_bool report_audit_findings(void *entry, void *report_ctx_arg)
   return FALSE;
 }
 
-my_bool Gtid_stream_auditor::report(FILE *out, my_bool is_strict_mode)
+my_bool Binlog_gtid_state_validator::report(FILE *out, my_bool is_strict_mode)
 {
   struct gtid_report_ctx report_ctx;
   report_ctx.out_file= out;

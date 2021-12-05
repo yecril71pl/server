@@ -390,11 +390,16 @@ extern rpl_gtid *gtid_unpack_string_to_list(const char *p, size_t len,
 
 
 /*
-  Class which audits a stream of GTIDs (from arbitrary domains) to see if the
-  sequence numbers are out of order in any domains. This class silently
-  collects problem GTIDs and writes them as warnings in `report()`.
+  This class ensures that the GTID state of an event stream is consistent with
+  the set of provided binary log files. In particular, it has two concerns:
+
+    1) Ensuring that GTID events are monotonically increasing within each
+       domain
+    2) Ensuring that the GTID state of the specified binary logs is consistent
+       both with the initial state that a user provides, and between
+       binary logs (if multiple are specified)
 */
-class Gtid_stream_auditor
+class Binlog_gtid_state_validator
 {
 public:
 
@@ -425,12 +430,12 @@ public:
     DYNAMIC_ARRAY late_gtids_previous;
   };
 
-  Gtid_stream_auditor();
-  ~Gtid_stream_auditor();
+  Binlog_gtid_state_validator();
+  ~Binlog_gtid_state_validator();
 
   /*
     Initialize where we should start monitoring for invalid GTID entries
-    in the data stream. Note that these start positions must occur at or after
+    in the event stream. Note that these start positions must occur at or after
     a given binary logs GTID state (from Gtid_list_log_event)
   */
   void initialize_start_gtids(rpl_gtid *start_gtids, size_t n_gtids);
@@ -442,6 +447,12 @@ public:
     a purged log).
   */
   my_bool initialize_gtid_state(FILE *out, rpl_gtid *gtids, size_t n_gtids);
+
+  /*
+    Ensures that the expected stop GTID positions exist within the specified
+    binary logs.
+  */
+  my_bool verify_stop_state(FILE *out, rpl_gtid *stop_gtids, size_t n_stop_gtids);
 
   /*
     Ensure a GTID state (e.g., from a Gtid_list_log_event) is consistent with

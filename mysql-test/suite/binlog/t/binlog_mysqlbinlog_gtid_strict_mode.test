@@ -28,6 +28,12 @@
 #                 specification
 #   Test Case 11) Strict mode warnings should be independent of
 #                 --start-timestamp option specification
+#   Test Case 12) Specifying multiple binary logs with a log-position start
+#                 should skip GTID state verification
+#   Test Case 13) If multiple binary logs should be specified but a middle log
+#                 is missing, we should detect that and warn when using -vvv
+#   Test Case 14) If a --stop-position GTID occurs before the first specified
+#                 binlog's GLLE, error
 #
 # Note that test cases are tested under three scenarios:
 #  1) --gtid-strict-mode should error and immediately quit with error on out of

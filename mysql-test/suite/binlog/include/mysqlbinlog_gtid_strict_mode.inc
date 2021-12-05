@@ -317,4 +317,111 @@ FLUSH LOGS;
 DROP TABLE t1;
 RESET MASTER;
 
+--echo #
+--echo #   Test Case 12:
+--echo #   Specifying multiple binary logs with a log-position start should
+--echo # skip GTID state verification
+RESET MASTER;
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+CREATE TABLE t1 (a int);
+INSERT INTO t1 values (1);
+--let $b2_start_pos= query_get_value(SHOW MASTER STATUS,Position, 1)
+SET @@session.gtid_domain_id= 1;
+SET @@session.server_id= 2;
+CREATE TABLE t2 (a int);
+INSERT INTO t2 values (1);
+FLUSH LOGS;
+INSERT INTO t2 values (2);
+FLUSH LOGS;
+--let BINLOG_FILE1= query_get_value(SHOW BINARY LOGS, Log_name, 1)
+# Skip file 2 as input
+--let BINLOG_FILE2= query_get_value(SHOW BINARY LOGS, Log_name, 2)
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/BINLOG_FILE1 MYSQLD_DATADIR/BINLOG_FILE2 --start-position=b2_start_pos $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE1 $MYSQLD_DATADIR/$BINLOG_FILE2 --start-position=$b2_start_pos $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
+DROP TABLE t1;
+DROP TABLE t2;
+
+
+--echo #
+--echo #   Test Case 13:
+--echo #   If multiple binary logs should be specified but a middle log is
+--echo # missing, we should detect that and warn when using -vvv
+
+RESET MASTER;
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+CREATE TABLE t1 (a int);
+FLUSH LOGS;
+INSERT INTO t1 values (1);
+--let $b2_start_pos= query_get_value(SHOW MASTER STATUS,Position, 1)
+SET @@session.gtid_domain_id= 1;
+SET @@session.server_id= 2;
+CREATE TABLE t2 (a int);
+FLUSH LOGS;
+SET @@session.gtid_domain_id= 2;
+SET @@session.server_id= 3;
+CREATE TABLE t3 (a int);
+FLUSH LOGS;
+
+--echo #
+--echo # GLLE from each log for state reference
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 1)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 2)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 3)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+
+--let BINLOG_FILE1= query_get_value(SHOW BINARY LOGS, Log_name, 1)
+# Skip file 2 as input
+--let BINLOG_FILE3= query_get_value(SHOW BINARY LOGS, Log_name, 3)
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/BINLOG_FILE1 MYSQLD_DATADIR/BINLOG_FILE3 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE1 $MYSQLD_DATADIR/$BINLOG_FILE3 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
+--echo # We should have two warnings about missing data from domains 0 and 1 if
+--echo # -vvv is specified
+--let SEARCH_FILE=$log_error_
+--let SEARCH_PATTERN=WARNING: Binary logs are missing data for domain 0[^\n]+the last seen event was
+--source include/search_pattern_in_file.inc
+--let SEARCH_PATTERN=WARNING: Binary logs are missing data for domain 1[^\n]+neither the starting GTID position list nor any processed events
+--source include/search_pattern_in_file.inc
+--remove_file $log_error_
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+RESET MASTER;
+
+--echo #
+--echo #   Test Case 14:
+--echo #   If a --stop-position GTID occurs before the first specified binlog's
+--echo # GLLE, error
+RESET MASTER;
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+CREATE TABLE t1 (a int);
+INSERT INTO t1 values (1);
+INSERT INTO t1 values (2);
+FLUSH LOGS;
+INSERT INTO t1 values (3);
+FLUSH LOGS;
+
+--echo #
+--echo # GLLE from each log for state reference
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 1)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 2)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/BINLOG_FILE2 $BINLOG_STRICT_MODE_PARAM --stop-position=0-1-2 2> log_error_ > OUT_FILE
+--error 1
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE2 $BINLOG_STRICT_MODE_PARAM --stop-position=0-1-2 2> $log_error_ > $OUT_FILE
+--let SEARCH_PATTERN=ERROR: --stop-position GTID
+--source include/search_pattern_in_file.inc
+--remove_file $log_error_
+DROP TABLE t1;
+
 --remove_file $OUT_FILE
