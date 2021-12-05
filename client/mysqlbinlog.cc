@@ -1113,7 +1113,7 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
   {
     rpl_gtid ev_gtid;
     Gtid_log_event *gle= (Gtid_log_event*) ev;
-    set_rpl_gtid(&ev_gtid, gle->domain_id, gle->server_id, gle->seq_no);
+    ev_gtid= {gle->domain_id, gle->server_id, gle->seq_no};
 
     /*
       If the binlog output should be filtered using GTIDs, test the new event

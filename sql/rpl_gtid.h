@@ -386,8 +386,6 @@ extern rpl_gtid *gtid_parse_string_to_list(const char *p, size_t len,
                                            uint32 *out_len);
 extern rpl_gtid *gtid_unpack_string_to_list(const char *p, size_t len,
                                            uint32 *out_len);
-extern void set_rpl_gtid(rpl_gtid *out, uint32 domain_id, uint32 server_id,
-                         uint64 seq_no);
 
 
 
@@ -608,13 +606,13 @@ public:
   void clear_start_pos()
   {
     m_has_start= FALSE;
-    set_rpl_gtid(&m_start, 0, 0, 0);
+    m_start= {0, 0, 0};
   }
 
   void clear_stop_pos()
   {
     m_has_stop= FALSE;
-    set_rpl_gtid(&m_stop, 0, 0, 0);
+    m_stop= {0, 0, 0};
   }
 
 protected:

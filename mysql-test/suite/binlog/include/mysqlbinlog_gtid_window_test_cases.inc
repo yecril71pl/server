@@ -499,7 +499,7 @@ if ($is_remote == 1)
 }
 if ($is_remote == 0)
 {
-    --let SEARCH_PATTERN=ERROR: Found unrecognized GTID
+    --let SEARCH_PATTERN=ERROR: Starting GTID position list does not specify an initial value
 }
 --source include/search_pattern_in_file.inc
 --remove_file $err_out_

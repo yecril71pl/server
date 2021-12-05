@@ -100,6 +100,9 @@ RESET MASTER;
 # because we validate for error consistency of GTID state between
 # mariadb-binlog working on local files and receiving errors from a server
 
+--let err_out_= $MYSQLTEST_VARDIR/tmp/err.out
+--let tmp_out_= $MYSQLTEST_VARDIR/tmp/std.out
+
 --let $MYSQLD_DATADIR=`select @@datadir`
 --echo #
 --echo #   Error Case 4:
@@ -132,8 +135,57 @@ RESET MASTER;
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1,0-1-8 --stop-position=0-1-4,0-1-12
 
 
+--echo #
+--echo #   Error Case 6:
+--echo #   If multiple binary logs should be specified but a middle log is
+--echo # missing, we should detect that and error
+RESET MASTER;
+SET @@session.gtid_domain_id= 0;
+SET @@session.server_id= 1;
+CREATE TABLE t1 (a int);
+FLUSH LOGS;
+INSERT INTO t1 values (1);
+SET @@session.gtid_domain_id= 1;
+SET @@session.server_id= 2;
+CREATE TABLE t2 (a int);
+FLUSH LOGS;
+SET @@session.gtid_domain_id= 2;
+SET @@session.server_id= 3;
+CREATE TABLE t3 (a int);
+FLUSH LOGS;
+
+--echo # GLLE from each log for state reference
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 1)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 2)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+--let $binlog_file= query_get_value(SHOW BINARY LOGS, Log_name, 3)
+--source include/show_gtid_list.inc
+--let $binlog_file=
+
+--let BINLOG_FILE1= query_get_value(SHOW BINARY LOGS, Log_name, 1)
+# Skip file 2 as input
+--let BINLOG_FILE3= query_get_value(SHOW BINARY LOGS, Log_name, 3)
+--echo # MYSQL_BINLOG MYSQLD_DATADIR/BINLOG_FILE1 MYSQLD_DATADIR/BINLOG_FILE3 2> err_out_ > tmp_out_
+--error 1
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/$BINLOG_FILE1 $MYSQLD_DATADIR/$BINLOG_FILE3 2> $err_out_ > $tmp_out_
+--echo # We should have two errors about missing data from domains 0 and 1
+--let SEARCH_FILE=$err_out_
+--let SEARCH_PATTERN=ERROR: Binary logs are missing data for domain 0[^\n]+the last seen event was
+--source include/search_pattern_in_file.inc
+--let SEARCH_PATTERN=ERROR: Binary logs are missing data for domain 1[^\n]+neither the starting GTID position list nor any processed events
+--source include/search_pattern_in_file.inc
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+RESET MASTER;
+
+
 --echo ##############################
 --echo #      Cleanup
 --echo ##############################
 --eval SET @@global.gtid_domain_id= $orig_gtid_domain_id
 --eval SET @@global.server_id= $orig_server_id
+--remove_file $err_out_

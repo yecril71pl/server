@@ -1275,15 +1275,7 @@ rpl_slave_state::domain_to_gtid(uint32 domain_id, rpl_gtid *out_gtid)
 
 #endif
 
-void set_rpl_gtid(rpl_gtid *out, uint32 domain_id_arg,
-                         uint32 server_id_arg, uint64 seq_no_arg)
-{
-  out->domain_id= domain_id_arg;
-  out->server_id= server_id_arg;
-  out->seq_no= seq_no_arg;
-}
-
- /*
+/*
   Parse a GTID at the start of a string, and update the pointer to point
   at the first character after the parsed GTID.
 
@@ -1312,37 +1304,15 @@ gtid_parser_helper(const char **ptr, const char *end, rpl_gtid *out_gtid)
   if (err != 0)
     return 1;
 
-  set_rpl_gtid(out_gtid, (uint32) v1, (uint32) v2, v3);
+  out_gtid->domain_id= (uint32) v1;
+  out_gtid->server_id= (uint32) v2;
+  out_gtid->seq_no= v3;
   *ptr= q;
   return 0;
 }
 
-/*
-  Unpack a GTID at the start of a string, and update the pointer to point
-  at the first character after the unpacked GTID.
-
-  Returns 0 on ok, non-zero on parse error.
-*/
-static int
-gtid_unpack_helper(const char **ptr, const char *end, rpl_gtid *out_gtid)
-{
-  const char *p= *ptr;
-
-  if (p[4] != '-' || p[9] != '-')
-    return 1;
-
-  out_gtid->domain_id= (uint32)uint4korr(p);
-  out_gtid->server_id= (uint32)uint4korr(&p[5]);
-  out_gtid->seq_no= (uint64)uint8korr(&p[10]);
-
-  *ptr= p + 18;
-  return 0;
-}
-
 rpl_gtid *
-gtid_read_to_list(const char *str, size_t str_len, uint32 *out_len,
-                          int reader_f(const char **ptr, const char *end,
-                                        rpl_gtid *out_gtid))
+gtid_parse_string_to_list(const char *str, size_t str_len, uint32 *out_len)
 {
   const char *p= const_cast<char *>(str);
   const char *end= p + str_len;
@@ -1353,7 +1323,7 @@ gtid_read_to_list(const char *str, size_t str_len, uint32 *out_len,
   {
     rpl_gtid gtid;
 
-    if (len >= (((uint32)1 << 28)-1) || reader_f(&p, end, &gtid))
+    if (len >= (((uint32)1 << 28)-1) || gtid_parser_helper(&p, end, &gtid))
     {
       my_free(list);
       return NULL;
@@ -1377,19 +1347,6 @@ gtid_read_to_list(const char *str, size_t str_len, uint32 *out_len,
   }
   *out_len= len;
   return list;
-}
-
-
-rpl_gtid *
-gtid_parse_string_to_list(const char *str, size_t str_len, uint32 *out_len)
-{
-  return gtid_read_to_list(str, str_len, out_len, gtid_parser_helper);
-}
-
-rpl_gtid *
-gtid_unpack_string_to_list(const char *str, size_t str_len, uint32 *out_len)
-{
-  return gtid_read_to_list(str, str_len, out_len, gtid_unpack_helper);
 }
 
 #ifndef MYSQL_CLIENT
@@ -3080,7 +3037,7 @@ void Gtid_stream_auditor::initialize_start_gtids(rpl_gtid *start_gtids,
 
     audit_elem->domain_id= start_gtids[i].domain_id;
     audit_elem->start_gtid= start_gtids[i];
-    set_rpl_gtid(&(audit_elem->last_gtid), audit_elem->domain_id, 0, 0);
+    audit_elem->last_gtid= {audit_elem->domain_id, 0, 0};
 
     my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_real,
                           sizeof(rpl_gtid), 8, 8, MYF(0));
@@ -3120,8 +3077,11 @@ my_bool Gtid_stream_auditor::initialize_gtid_state(FILE *out, rpl_gtid *gtids,
     if (!audit_elem)
     {
       Gtid_stream_auditor::error(
-          out, "Found unrecognized GTID state %u-%u-%llu in binary logs.",
-          PARAM_GTID((*domain_state_gtid)));
+          out,
+          "Starting GTID position list does not specify an initial value "
+          "for domain %u, whose events may be present in the requested binlog "
+          "file(s). The last known position for this domain was %u-%u-%llu.",
+          domain_state_gtid->domain_id, PARAM_GTID((*domain_state_gtid)));
       err= TRUE;
       continue;
     }
@@ -3155,8 +3115,13 @@ my_bool Gtid_stream_auditor::verify_gtid_state(FILE *out,
   if (!audit_elem)
   {
     Gtid_stream_auditor::error(
-        out, "GTID state %u-%u-%llu was found in binary logs but not in "
-             "start state", PARAM_GTID((*domain_state_gtid)));
+        out,
+        "Binary logs are missing data for domain %u. The current binary log "
+        "specified its "
+        "current state for this domain as %u-%u-%llu, but neither the "
+        "starting GTID position list nor any processed events have mentioned "
+        "this domain.",
+        domain_state_gtid->domain_id, PARAM_GTID((*domain_state_gtid)));
     return TRUE;
   }
 
@@ -3195,7 +3160,7 @@ my_bool Gtid_stream_auditor::record(rpl_gtid *gtid)
 
     audit_elem->domain_id= gtid->domain_id;
     audit_elem->last_gtid= *gtid;
-    set_rpl_gtid(&(audit_elem->start_gtid), gtid->domain_id, 0, 0);
+    audit_elem->start_gtid= {gtid->domain_id, 0, 0};
 
     my_init_dynamic_array(PSI_INSTRUMENT_ME, &audit_elem->late_gtids_real,
                           sizeof(rpl_gtid), 8, 8, MYF(0));
