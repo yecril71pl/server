@@ -1723,14 +1723,13 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
   {
     DBUG_EXECUTE_IF("rpl_slave_stop_CA_before_binlog",
     {
+      // the awake comes from STOP-SLAVE running driver (sql) thread
       debug_sync_set_action(thd,
-                            STRING_WITH_LEN("now signal CA_1_processing "
-                                            "WAIT_FOR proceed_CA_1"));
+                            STRING_WITH_LEN("now WAIT_FOR proceed_CA_1"));
     });
   }
   start_alter_info *info=NULL;
   Master_info *mi= NULL;
-  bool is_direct= false;
 
   rgi->gtid_ev_sa_seq_no= sa_seq_no;
   // is set for both the direct execution and the write to binlog
@@ -1744,10 +1743,6 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
       if(info->sa_seq_no == rgi->gtid_ev_sa_seq_no &&
          info->domain_id == rgi->current_gtid.domain_id)
       {
-        is_direct= info->direct_commit_alter;
-
-        DBUG_ASSERT(!is_direct || info->state == start_alter_state::COMPLETED);
-
         info_iterator.remove();
         break;
       }
@@ -1755,7 +1750,7 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
   }
   mysql_mutex_unlock(&mi->start_alter_list_lock);
 
-  if (!info || is_direct)
+  if (!info)
   {
     if (is_CA)
     {
@@ -1800,12 +1795,15 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
   else
   {
     // SA has completed and left being kicked out by deadlock or ftwrl
-      DBUG_ASSERT(info->direct_commit_alter);
+    DBUG_ASSERT(info->direct_commit_alter);
   }
   mysql_mutex_unlock(&mi->start_alter_lock);
 
   if (info->direct_commit_alter)
+  {
+    rgi->direct_commit_alter= true; // execute the query as if there was no SA
     goto cleanup;
+  }
 
 write_binlog:
   rc= 1;

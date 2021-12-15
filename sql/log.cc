@@ -612,13 +612,16 @@ bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
 
     Master_info *mi= thd->rgi_slave->rli->mi;
     start_alter_info *info= thd->rgi_slave->sa_info;
+    bool is_shutdown= false;
 
     info->sa_seq_no= start_alter_id;
     info->domain_id= thd->variables.gtid_domain_id;
-    info->state= start_alter_state::REGISTERED;
     mysql_mutex_lock(&mi->start_alter_list_lock);
+    // possible stop-slave's marking of the whole alter state list is checked
+    is_shutdown= mi->is_shutdown;
     mi->start_alter_list.push_back(info, &mi->mem_root);
     mysql_mutex_unlock(&mi->start_alter_list_lock);
+    info->state= start_alter_state::REGISTERED;
     thd->rgi_slave->commit_orderer.wait_for_prior_commit(thd);
     thd->rgi_slave->start_alter_ev->update_pos(thd->rgi_slave);
     if (mysql_bin_log.is_open())
@@ -633,6 +636,21 @@ bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
     thd->rgi_slave->mark_start_commit();
     thd->wakeup_subsequent_commits(0);
     thd->rgi_slave->finish_start_alter_event_group();
+
+    if (is_shutdown)
+    {
+      /* SA exists abruptly and will notify any CA|RA waiter. */
+      mysql_mutex_lock(&mi->start_alter_lock);
+      /*
+        If there is (or will be) unlikely any CA it will execute
+        the whole query before to stop itself.
+      */
+      info->direct_commit_alter= true;
+      info->state= start_alter_state::ROLLBACK_ALTER;
+      mysql_mutex_unlock(&mi->start_alter_lock);
+
+      return true;
+    }
 
     return false;
   }
