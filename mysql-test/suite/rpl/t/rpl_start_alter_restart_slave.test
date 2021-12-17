@@ -101,6 +101,9 @@ if (`select $master_gtid_state <> $slave_gtid_state`)
   --echo Gtid state mismatch: $master_gtid_state <> $slave_gtid_state
   --die
 }
+--echo # The list of events after the slave has synchronized must have both CA:
+--let $replace_regexp=/alter table t[12]/alter table <t>/ /id=[0-9]+/id=<seq_no>/
+--source include/show_binlog_events2.inc
 
 --connection master
 drop table t1,t2,t3;

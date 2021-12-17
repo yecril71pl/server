@@ -85,6 +85,25 @@ select domain_id, seq_no from mysql.gtid_slave_pos order by seq_no desc limit 1;
 domain_id	seq_no
 0	7
 # slave gtid state is 0-1-7
+# The list of events after the slave has synchronized must have both CA:
+show binlog events  from <binlog_start>;
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+slave-bin.000001	#	Gtid_list	2	#	[]
+slave-bin.000001	#	Binlog_checkpoint	2	#	slave-bin.000001
+slave-bin.000001	#	Gtid	1	#	GTID #-#-#
+slave-bin.000001	#	Query	1	#	use `test`; create table t1( a int primary key, b int) engine=myisam
+slave-bin.000001	#	Gtid	1	#	GTID #-#-#
+slave-bin.000001	#	Query	1	#	use `test`; create table t2( a int primary key, b int) engine=myisam
+slave-bin.000001	#	Gtid	1	#	GTID #-#-# START ALTER
+slave-bin.000001	#	Query	1	#	use `test`; alter table <t> add column c int
+slave-bin.000001	#	Gtid	1	#	GTID #-#-# START ALTER
+slave-bin.000001	#	Query	1	#	use `test`; alter table <t> add column c int
+slave-bin.000001	#	Gtid	1	#	GTID #-#-# COMMIT ALTER id=<seq_no>
+slave-bin.000001	#	Query	1	#	use `test`; alter table <t> add column c int
+slave-bin.000001	#	Gtid	1	#	GTID #-#-# COMMIT ALTER id=<seq_no>
+slave-bin.000001	#	Query	1	#	use `test`; alter table <t> add column c int
+slave-bin.000001	#	Gtid	1	#	GTID #-#-#
+slave-bin.000001	#	Query	1	#	use `test`; create table t3( a int primary key, b int) engine=innodb
 connection master;
 drop table t1,t2,t3;
 set global binlog_alter_two_phase = No;;
