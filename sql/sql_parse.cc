@@ -3648,6 +3648,7 @@ mysql_execute_command(THD *thd, bool is_called_from_prepared_stmt)
 
   Json_writer_object trace_command(thd);
   Json_writer_array trace_command_steps(thd, "steps");
+  ots.trace_heading_done();
 
   /* store old value of binlog format */
   enum_binlog_format orig_binlog_format,orig_current_stmt_binlog_format;
@@ -6149,6 +6150,9 @@ finish:
   {
     wsrep_commit_empty(thd, true);
   }
+
+  if (res || thd->is_error())
+    ots.clean_empty_trace();
 
   /* assume PA safety for next transaction */
   thd->wsrep_PA_safe= true;
