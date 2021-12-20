@@ -34,7 +34,7 @@ ALTER TABLE t1 ADD COLUMN b int;
 
 --echo # START Alter having exclusive lock is waiting for the signal
 --connection slave
---let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE STATE = 'debug sync point: now';
+--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE STATE = 'debug sync point: now'
 --source include/wait_condition.inc
 
 --echo # FTWRL is sent first to wait for SA
@@ -42,7 +42,11 @@ ALTER TABLE t1 ADD COLUMN b int;
 --send FLUSH TABLES WITH READ LOCK
 
 --echo # SA completes
+# First wait for the FTWRL arrival.
 --connection slave
+--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE INFO = 'FLUSH TABLES WITH READ LOCK' and STATE = 'Waiting for worker threads to pause for global read lock'
+--source include/wait_condition.inc
+
 set DEBUG_SYNC= "now signal alter_cont";
 
 --connection slave1
@@ -50,7 +54,7 @@ set DEBUG_SYNC= "now signal alter_cont";
 
 # Commit ALTER is hanging now
 --connection slave
---let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND = 'Slave_worker' AND STATE = 'Waiting for backup lock';
+--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND = 'Slave_worker' AND STATE = 'Waiting for backup lock'
 --source include/wait_condition.inc
 
 --echo # Release CA

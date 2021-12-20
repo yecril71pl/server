@@ -629,6 +629,9 @@ rpl_pause_for_ftwrl(THD *thd)
     };
     --e->need_sub_id_signal;
 
+    thd->EXIT_COND(&old_stage);
+    if (err)
+      break;
     /*
       Notify any source any domain waiting-for-master Start-Alter to give way.
     */
@@ -655,9 +658,6 @@ rpl_pause_for_ftwrl(THD *thd)
       }
       mysql_mutex_unlock(&mi->start_alter_list_lock);
     }
-    thd->EXIT_COND(&old_stage);
-    if (err)
-      break;
   }
 
   if (err)
@@ -2644,6 +2644,11 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
   while ((info= info_iterator++))
   {
     mysql_mutex_lock(&mi->start_alter_lock);
+    if (info->state == start_alter_state::COMPLETED)
+    {
+      mysql_mutex_unlock(&mi->start_alter_lock);
+      break;
+    }
     info->state= start_alter_state::ROLLBACK_ALTER;
     // Any possible CA that is (will be) waiting will complete this ALTER instance
     info->direct_commit_alter= true;
@@ -2654,9 +2659,10 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
     mysql_mutex_lock(&mi->start_alter_lock);
     while(info->state == start_alter_state::ROLLBACK_ALTER)
       mysql_cond_wait(&info->start_alter_cond, &mi->start_alter_lock);
-    mysql_mutex_unlock(&mi->start_alter_lock);
 
     DBUG_ASSERT(info->state == start_alter_state::COMPLETED);
+
+    mysql_mutex_unlock(&mi->start_alter_lock);
   }
   mysql_mutex_unlock(&mi->start_alter_list_lock);
 

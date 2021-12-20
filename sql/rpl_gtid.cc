@@ -758,7 +758,8 @@ end:
         thd->release_transactional_locks();
     }
   }
-  if (tbl)
+  if (thd->rgi_slave &&
+      thd->rgi_slave->gtid_ev_flags_extra & Gtid_log_event::FL_START_ALTER_E1)
   {
     mysql_mutex_lock(&thd->LOCK_thd_data);
     thd->open_tables= tbl;
