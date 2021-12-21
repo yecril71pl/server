@@ -2647,7 +2647,7 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
     if (info->state == start_alter_state::COMPLETED)
     {
       mysql_mutex_unlock(&mi->start_alter_lock);
-      break;
+      continue;
     }
     info->state= start_alter_state::ROLLBACK_ALTER;
     // Any possible CA that is (will be) waiting will complete this ALTER instance
