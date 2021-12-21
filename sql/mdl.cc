@@ -2241,7 +2241,8 @@ bool MDL_lock::check_if_conflicting_replication_locks(MDL_context *ctx)
           conflicting_rgi_slave->rli == rgi_slave->rli &&
           conflicting_rgi_slave->current_gtid.domain_id ==
           rgi_slave->current_gtid.domain_id &&
-          !(conflicting_rgi_slave->did_mark_start_commit ||
+          !((conflicting_rgi_slave->did_mark_start_commit ||
+             conflicting_rgi_slave->worker_error)           ||
             conflicting_rgi_slave->finish_event_group_called))
         return 1;                               // Fatal error
     }

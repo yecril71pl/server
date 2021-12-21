@@ -600,7 +600,7 @@ bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
                                uint64 start_alter_id, bool if_exists)
 {
 #if defined(HAVE_REPLICATION)
-  if (!(thd->variables.option_bits & OPTION_BIN_LOG))
+  if (thd->variables.option_bits & OPTION_BIN_TMP_LOG_OFF)
     return false;
 
   if (start_alter_id)
