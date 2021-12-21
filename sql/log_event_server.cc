@@ -3296,7 +3296,8 @@ Gtid_log_event::Gtid_log_event(THD *thd_arg, uint64 seq_no_arg,
         (thd->lex->sql_command == SQLCOM_XA_PREPARE ||
          xid_state.get_state_code() == XA_PREPARED))
     {
-      DBUG_ASSERT(thd->lex->xa_opt != XA_ONE_PHASE);
+      DBUG_ASSERT(thd->lex->sql_command == SQLCOM_XA_PREPARE ||
+                  thd->lex->xa_opt != XA_ONE_PHASE);
 
       flags2|= thd->lex->sql_command == SQLCOM_XA_PREPARE ?
         FL_PREPARED_XA : FL_COMPLETED_XA;
