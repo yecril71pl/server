@@ -634,7 +634,8 @@ constexpr privilege_t PRIV_STMT_DROP_SERVER= FEDERATED_ADMIN_ACL | SUPER_ACL;
 
 /* Privileges related to processes */
 constexpr privilege_t PRIV_COM_PROCESS_INFO= PROCESS_ACL;
-constexpr privilege_t PRIV_STMT_SHOW_EXPLAIN= PROCESS_ACL;
+// This privilege applies both for SHOW EXPLAIN and SHOW ANALYZE
+constexpr privilege_t PRIV_STMT_SHOW_EXPLAIN= PROCESS_ACL; 
 constexpr privilege_t PRIV_STMT_SHOW_ENGINE_STATUS= PROCESS_ACL;
 constexpr privilege_t PRIV_STMT_SHOW_ENGINE_MUTEX= PROCESS_ACL;
 constexpr privilege_t PRIV_STMT_SHOW_PROCESSLIST= PROCESS_ACL;
