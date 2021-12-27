@@ -209,7 +209,7 @@ void sp_prepare_create_field(THD *thd, Column_definition *sql_field);
 bool mysql_write_frm(ALTER_PARTITION_PARAM_TYPE *lpt, uint flags);
 int write_bin_log(THD *thd, bool clear_error,
                   char const *query, ulong query_length,
-                  bool is_trans= FALSE);
+                  bool is_trans= false, is_direct= false);
 int write_bin_log_with_if_exists(THD *thd, bool clear_error,
                                  bool is_trans, bool add_if_exists,
                                  bool commit_alter= false);

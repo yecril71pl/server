@@ -1824,7 +1824,8 @@ write_binlog:
   {
     Write_log_with_flags wlwf(thd, is_CA ? Gtid_log_event::FL_COMMIT_ALTER_E1 :
                               Gtid_log_event::FL_ROLLBACK_ALTER_E1);
-    if (write_bin_log(thd, false, thd->query(), thd->query_length()))
+    if (write_bin_log(thd, false, thd->query(), thd->query_length(), false,
+                      true))
       rc= -1;
   }
 

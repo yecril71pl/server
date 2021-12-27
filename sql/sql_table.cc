@@ -985,7 +985,8 @@ end:
     query_length                  Length of query
     is_trans                      if the event changes either
                                   a trans or non-trans engine.
-
+    is_direct                     whether the event must be eventually written
+                                  into binlog without any caching.
   RETURN VALUES
     NONE
 
@@ -995,7 +996,8 @@ end:
 */
 
 int write_bin_log(THD *thd, bool clear_error,
-                  char const *query, ulong query_length, bool is_trans)
+                  char const *query, ulong query_length, bool is_trans,
+                  bool is_direct)
 {
   int error= 0;
   if (mysql_bin_log.is_open())
@@ -1007,7 +1009,7 @@ int write_bin_log(THD *thd, bool clear_error,
     else
       errcode= query_error_code(thd, TRUE);
     error= thd->binlog_query(THD::STMT_QUERY_TYPE,
-                             query, query_length, is_trans, FALSE, FALSE,
+                             query, query_length, is_trans, is_direct, FALSE,
                              errcode) > 0;
     thd_proc_info(thd, 0);
   }
