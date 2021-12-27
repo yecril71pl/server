@@ -1824,6 +1824,7 @@ write_binlog:
   {
     Write_log_with_flags wlwf(thd, is_CA ? Gtid_log_event::FL_COMMIT_ALTER_E1 :
                               Gtid_log_event::FL_ROLLBACK_ALTER_E1);
+    thd->lex->sql_command= SQLCOM_ALTER_TABLE;
     if (write_bin_log(thd, false, thd->query(), thd->query_length()))
       rc= -1;
   }
