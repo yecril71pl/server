@@ -8475,7 +8475,7 @@ bool TABLE_LIST::is_table_ref_id_equal(TABLE_SHARE *s)
         memcmp(tabledef_version.str, s->tabledef_version.str,
                tabledef_version.length) == 0)
     {
-      if (table->triggers)
+      if (table && table->triggers)
       {
 
         ulonglong stmt_create= (select_lex ?
