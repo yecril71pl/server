@@ -8426,6 +8426,8 @@ query_specification_start:
           {
             SELECT_LEX *sel;
             LEX *lex= Lex;
+            if (lex->sql_command == SQLCOM_INSERT)
+              thd->get_stmt_da()->inc_current_row_for_warning();
             if (!(sel= lex->alloc_select(TRUE)) || lex->push_select(sel))
               MYSQL_YYABORT;
             sel->init_select();
@@ -12909,7 +12911,6 @@ insert:
             Lex->sql_command= SQLCOM_INSERT;
             Lex->duplicates= DUP_ERROR;
             thd->get_stmt_da()->opt_clear_warning_info(thd->query_id);
-            thd->get_stmt_da()->reset_current_row_for_warning(1);
           }
           insert_start insert_lock_option opt_ignore opt_into insert_table
           {
@@ -12929,7 +12930,6 @@ replace:
             Lex->sql_command = SQLCOM_REPLACE;
             Lex->duplicates= DUP_REPLACE;
             thd->get_stmt_da()->opt_clear_warning_info(thd->query_id);
-            thd->get_stmt_da()->reset_current_row_for_warning(1);
           }
           insert_start replace_lock_option opt_into insert_table
           {
@@ -13008,6 +13008,7 @@ insert_field_spec:
         | SET
           {
             LEX *lex=Lex;
+            thd->get_stmt_da()->inc_current_row_for_warning();
             if (unlikely(!(lex->insert_list= new (thd->mem_root) List_item)) ||
                 unlikely(lex->many_values.push_back(lex->insert_list,
                          thd->mem_root)))
@@ -13084,13 +13085,13 @@ opt_by:
 no_braces:
           '('
           {
+            thd->get_stmt_da()->inc_current_row_for_warning();
             if (unlikely(!(Lex->insert_list= new (thd->mem_root) List_item)))
               MYSQL_YYABORT;
           }
           opt_values ')'
           {
             LEX *lex=Lex;
-            thd->get_stmt_da()->inc_current_row_for_warning();
             if (unlikely(lex->many_values.push_back(lex->insert_list,
                                                     thd->mem_root)))
               MYSQL_YYABORT;

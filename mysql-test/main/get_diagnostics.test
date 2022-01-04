@@ -1687,3 +1687,24 @@ GET DIAGNOSTICS CONDITION 3 @n = ROW_NUMBER;
 SELECT @n;
 
 DROP TABLE t;
+
+--echo #
+--echo # MDEV-26878: Query failing with syntax error sets ROW_NUMBER to
+--echo # non-zero
+--echo #
+
+CREATE TABLE t1 (id1 INT);
+
+--error ER_PARSE_ERROR
+INSERT INTO t1 VALUES XXX (1),(2);
+
+GET DIAGNOSTICS CONDITION 1 @n= ROW_NUMBER;
+SELECT @n;
+
+--error ER_PARSE_ERROR
+INSERT INTO t1 VALUES (1), (ALL);
+
+GET DIAGNOSTICS CONDITION 1 @num=ROW_NUMBER;
+SELECT @num;
+
+DROP TABLE t1;
