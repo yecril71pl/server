@@ -412,7 +412,6 @@ static bool eq_tree(SEL_ARG* a,SEL_ARG *b);
 SEL_ARG null_element(SEL_ARG::IMPOSSIBLE);
 static bool null_part_in_key(KEY_PART *key_part, const uchar *key,
                              uint length);
-static bool is_key_scan_ror(PARAM *param, uint keynr, uint8 nparts);
 
 static
 SEL_ARG *enforce_sel_arg_weight_limit(RANGE_OPT_PARAM *param, uint keyno,
@@ -3391,7 +3390,8 @@ bool calculate_cond_selectivity_for_table(THD *thd, TABLE *table, Item **cond)
 
   if (!*cond || table->pos_in_table_list->schema_table)
   {
-    table->set_cond_selectivity(table->opt_range_condition_rows / table_records);
+    table->set_cond_selectivity(table->opt_range_condition_rows /
+                                table_records);
     DBUG_RETURN(FALSE);
   }
 
@@ -5047,9 +5047,13 @@ static void dbug_print_singlepoint_range(SEL_ARG **start, uint num)
 
 double get_sweep_read_cost(const PARAM *param, ha_rows records)
 {
+  DBUG_ENTER("get_sweep_read_cost");
+#ifndef OLD_SWEEP_COST
+  DBUG_RETURN(param->table->file->ha_read_with_rowid(records));
+#else
   double result;
   uint pk= param->table->s->primary_key;
-  DBUG_ENTER("get_sweep_read_cost");
+
   if (param->table->file->pk_is_clustering_key(pk) ||
       param->table->file->stats.block_size == 0 /* HEAP */)
   {
@@ -5057,12 +5061,12 @@ double get_sweep_read_cost(const PARAM *param, ha_rows records)
       We are using the primary key to find the rows.
       Calculate the cost for this.
     */
-    result= param->table->file->ha_read_and_copy_time(pk, (uint)records, records);
+    result= table->file->ha_read_with_rowid(records);
   }
   else
   {
     /*
-      Rows will be retreived with rnd_pos(). Caluclate the expected
+      Rows will be retreived with rnd_pos(). Calculate the expected
       cost for this.
     */
     double n_blocks=
@@ -5095,9 +5099,11 @@ double get_sweep_read_cost(const PARAM *param, ha_rows records)
       */
       result= busy_blocks;
     }
+    result+= rows2double(n_rows) * RECORD_COPY_COST;
   }
   DBUG_PRINT("return",("cost: %g", result));
   DBUG_RETURN(result);
+#endif /* OLD_SWEEP_COST */
 }
 
 
@@ -6632,7 +6638,8 @@ ROR_SCAN_INFO *make_ror_scan(const PARAM *param, int idx, SEL_ARG *sel_arg)
     ror queue.
   */
   ror_scan->index_read_cost=
-    param->table->file->ha_keyread_and_copy_time(ror_scan->keynr, 1, ror_scan->records);
+    param->table->file->ha_keyread_and_copy_time(ror_scan->keynr, 1,
+                                                 ror_scan->records);
   DBUG_RETURN(ror_scan);
 }
 
@@ -7024,7 +7031,10 @@ static bool ror_intersect_add(ROR_INTERSECT_INFO *info,
     DBUG_PRINT("info", ("info->total_cost= %g", info->total_cost));
   }
   else
+  {
+    info->total_cost+= double2rows(info->out_rows) * INDEX_COPY_COST;
     trace_costs->add("disk_sweep_cost", static_cast<longlong>(0));
+  }
 
   DBUG_PRINT("info", ("New out_rows: %g", info->out_rows));
   DBUG_PRINT("info", ("New cost: %g, %scovering", info->total_cost,

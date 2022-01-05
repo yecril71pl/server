@@ -48,9 +48,10 @@ lookup_cost(Rowid_filter_container_type cont_type)
 
 inline
 double Range_rowid_filter_cost_info::
-avg_access_and_eval_gain_per_row(Rowid_filter_container_type cont_type)
+avg_access_and_eval_gain_per_row(Rowid_filter_container_type cont_type,
+                                 double cost_of_row_fetch)
 {
-  return (1+1.0/TIME_FOR_COMPARE) * (1 - selectivity) -
+  return (cost_of_row_fetch+1.0/TIME_FOR_COMPARE) * (1 - selectivity) -
          lookup_cost(cont_type);
 }
 
@@ -125,7 +126,8 @@ void Range_rowid_filter_cost_info::init(Rowid_filter_container_type cont_type,
   est_elements= (ulonglong) table->opt_range[key_no].rows;
   cost_of_building_range_filter= build_cost(container_type);
   selectivity= est_elements/((double) table->stat_records());
-  gain= avg_access_and_eval_gain_per_row(container_type);
+  gain= avg_access_and_eval_gain_per_row(container_type,
+                                         tab->file->optimizer_cache_cost);
   if (gain > 0)
     cross_x= cost_of_building_range_filter/gain;
   else

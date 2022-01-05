@@ -668,12 +668,13 @@ static
 double spl_postjoin_oper_cost(THD *thd, double join_record_count, uint rec_len)
 {
   double cost;
-  cost=  get_tmp_table_write_cost(thd, join_record_count,rec_len) *
-         join_record_count;   // cost to fill tmp table
-  cost+= get_tmp_table_lookup_cost(thd, join_record_count,rec_len) *
-         join_record_count;   // cost to perform post join operation used here
-  cost+= get_tmp_table_lookup_cost(thd, join_record_count, rec_len) +
-         (join_record_count == 0 ? 0 :
+  TMPTABLE_COSTS tmp_cost= get_tmp_table_costs(thd, join_record_count,
+                                               rec_len, 0);
+  // cost to fill tmp table
+  cost= tmp_cost.create + tmp_cost.write * join_record_count;
+   // cost to perform post join operation used here
+  cost+= tmp_cost.lookup * join_record_count;
+  cost+= (join_record_count == 0 ? 0 :
           join_record_count * log2 (join_record_count)) *
          SORT_INDEX_CMP_COST;             // cost to perform  sorting
   return cost;
