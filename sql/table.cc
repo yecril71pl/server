@@ -2844,7 +2844,7 @@ bool Virtual_column_info::fix_expr(THD *thd)
 bool Virtual_column_info::fix_session_expr(THD *thd)
 {
   // TODO: remove either this check or vcols_need_refixing
-  if (!(flags & (VCOL_TIME_FUNC|VCOL_SESSION_FUNC|VCOL_TABLE_ALIAS)))
+  if (!(flags & (VCOL_TIME_FUNC|VCOL_SESSION_FUNC)))
     return false;
 
   if (expr->walk(&Item::cached_table_cleanup_processor, 0, 0))
@@ -3074,7 +3074,7 @@ bool Virtual_column_info::fix_and_check_expr(THD *thd, TABLE *table)
   }
   flags= res.errors;
 
-  if (flags & (VCOL_SESSION_FUNC|VCOL_TABLE_ALIAS))
+  if (flags & VCOL_SESSION_FUNC)
     table->s->vcols_need_refixing= true;
 
   DBUG_RETURN(0);

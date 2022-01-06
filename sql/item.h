@@ -2642,19 +2642,6 @@ public:
                             const char *db_name,
                             const char *table_name, List_iterator<Item> *it,
                             bool any_privileges);
-  bool check_vcol_func_processor(void *arg)
-  {
-    if (table_name)
-    {
-      /*
-         NOTE: alias is different in every statement, we must update it.
-         We cannot rely on alias_name_used (see NOTE above).
-      */
-      DBUG_ASSERT(field_name);
-      return mark_unsupported_function(field_name, arg, VCOL_TABLE_ALIAS);
-    }
-    return false;
-  }
 };
 
 
@@ -2853,8 +2840,6 @@ public:
   bool check_vcol_func_processor(void *arg)
   {
     context= 0;
-    if (Item_ident::check_vcol_func_processor(arg))
-      return true;
     if (field && (field->unireg_check == Field::NEXT_NUMBER))
     {
       // Auto increment fields are unsupported

@@ -1377,8 +1377,6 @@ public:
   /*
      NOTE: alias_name_used is only a hint! It works only in need_correct_ident()
      condition. On other cases it is FALSE even if table_name is alias!
-     It cannot be TRUE in these cases, lots of spaghetti logic depends on that
-     (TODO).
   */
   bool alias_name_used;              /* true if table_name is alias */
   bool get_fields_in_item_tree;      /* Signal to fix_field */
