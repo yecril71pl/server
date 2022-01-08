@@ -1883,5 +1883,13 @@ select c from t;
 drop table t;
 
 --echo #
+--echo # MDEV-27434 DESC attribute does not work with auto-increment on secondary column of multi-part index
+--echo #
+create table t (a int auto_increment, b int, unique(b,a desc)) engine=myisam;
+insert ignore into t (b) values (10),(10),(10);
+select * from t;
+drop table t;
+
+--echo #
 --echo # End of 10.8 tests
 --echo #

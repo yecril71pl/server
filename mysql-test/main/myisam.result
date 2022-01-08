@@ -2776,5 +2776,16 @@ bar
 NULL
 drop table t;
 #
+# MDEV-27434 DESC attribute does not work with auto-increment on secondary column of multi-part index
+#
+create table t (a int auto_increment, b int, unique(b,a desc)) engine=myisam;
+insert ignore into t (b) values (10),(10),(10);
+select * from t;
+a	b
+3	10
+2	10
+1	10
+drop table t;
+#
 # End of 10.8 tests
 #
