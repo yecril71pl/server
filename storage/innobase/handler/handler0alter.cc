@@ -8977,9 +8977,10 @@ innobase_rename_column_try(
 			}
 
 			pars_info_t* info = pars_info_create();
-			ulint pos = has_prefixes ? i << 16 | f.prefix_len : i;
-
-			pos = pos << 16 | !!f.descending << 15;
+			ulint pos = (has_prefixes || f.descending)
+				    ? i << 16 | f.prefix_len
+				      | !!f.descending << 15
+				    : i;
 			pars_info_add_ull_literal(info, "indexid", index->id);
 			pars_info_add_int4_literal(info, "nth", pos);
 			pars_info_add_str_literal(info, "new", to);
