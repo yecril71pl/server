@@ -2847,9 +2847,7 @@ bool Virtual_column_info::fix_session_expr(THD *thd)
   if (!(flags & (VCOL_TIME_FUNC|VCOL_SESSION_FUNC)))
     return false;
 
-  if (expr->walk(&Item::cached_table_cleanup_processor, 0, 0))
-    return true;
-  if (expr->walk(&Item::cleanup_processor, 0, 0))
+  if (expr->walk(&Item::cleanup_excluding_fields_processor, 0, 0))
     return true;
   DBUG_ASSERT(!expr->fixed);
   if (expr->walk(&Item::change_context_processor, 0, thd->lex->current_context()))
