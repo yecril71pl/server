@@ -1972,3 +1972,11 @@ t1	CREATE TABLE `t1` (
   UNIQUE KEY `id` (`id` DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
 DROP TABLE t1;
+#
+#  MDEV-27445 Index inconsistency and assertion failure after
+#	renaming virtual column with DESC key
+#
+CREATE TABLE t1(a INT, b INT AS (a), KEY(a, b DESC)) ENGINE=InnoDB;
+ALTER TABLE t1 RENAME COLUMN IF EXISTS b TO v;
+ALTER TABLE t1 FORCE;
+DROP TABLE t1;

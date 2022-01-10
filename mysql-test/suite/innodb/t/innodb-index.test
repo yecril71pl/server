@@ -1211,6 +1211,16 @@ CREATE TABLE t1 (id INT NOT NULL, UNIQUE(id DESC)) ENGINE=InnoDB;
 ALTER TABLE t1 ADD PRIMARY KEY (id), ALGORITHM=INPLACE;
 SHOW CREATE TABLE t1;
 DROP TABLE t1;
+
+--echo #
+--echo #  MDEV-27445 Index inconsistency and assertion failure after
+--echo #	renaming virtual column with DESC key
+--echo #
+CREATE TABLE t1(a INT, b INT AS (a), KEY(a, b DESC)) ENGINE=InnoDB;
+ALTER TABLE t1 RENAME COLUMN IF EXISTS b TO v;
+ALTER TABLE t1 FORCE;
+DROP TABLE t1;
+
 --disable_query_log
 
 call mtr.add_suppression("InnoDB: Tablespace .* was not found at .*t[12].ibd.");
