@@ -211,7 +211,6 @@ void _CONCAT_UNDERSCORED(turn_parser_debug_on,yyparse)()
     }  \
   } while(0)
 
-
 %}
 %union {
   int  num;
@@ -1699,6 +1698,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
         normal_key_options normal_key_opts all_key_opt 
         spatial_key_options fulltext_key_options normal_key_opt 
         fulltext_key_opt spatial_key_opt fulltext_key_opts spatial_key_opts
+        explain_for_connection
 	keep_gcc_happy
         key_using_alg
         part_column_list
@@ -1948,6 +1948,7 @@ verb_clause:
         | do
         | drop
         | execute
+        | explain_for_connection
         | flush
         | get_diagnostics
         | grant
@@ -14121,6 +14122,15 @@ opt_describe_column:
           }
         ;
 
+explain_for_connection:
+          describe_command FOR_SYM CONNECTION_SYM expr
+          {
+            Lex->sql_command= SQLCOM_SHOW_EXPLAIN;
+            if (unlikely(prepare_schema_table(thd, Lex, 0, SCH_EXPLAIN)))
+              MYSQL_YYABORT;
+            add_value_to_list(thd, $4);
+          }
+		;
 
 /* flush things */
 
