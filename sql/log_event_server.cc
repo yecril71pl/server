@@ -1698,6 +1698,7 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
       */
       rgi->reserved_start_alter_thread= false;
       Write_log_with_flags wlwf(thd, Gtid_log_event::FL_START_ALTER_E1);
+      thd->lex->sql_command= SQLCOM_ALTER_TABLE;
       if (write_bin_log(thd, false, thd->query(), thd->query_length()))
         return -1;
 
