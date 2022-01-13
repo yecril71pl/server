@@ -909,13 +909,18 @@ std::pair<lsn_t,mtr_t::page_flush_ahead> mtr_t::finish_write(size_t len)
 #endif
     log_sys.buf[log_sys.buf_free]=
       log_sys.get_sequence_bit(start_lsn + len - size);
-    mach_write_to_4(&log_sys.buf[log_sys.buf_free + 1], m_crc);
-    log_sys.buf_free+= 5;
-
     if (m_commit_lsn)
     {
-      mach_write_to_8(&log_sys.buf[log_sys.buf_free], m_commit_lsn);
-      log_sys.buf_free+= 8;
+      byte *nonce= log_sys.buf + log_sys.buf_free + 1;
+      mach_write_to_8(nonce, m_commit_lsn);
+      m_crc= my_crc32c(m_crc, nonce, 8);
+      mach_write_to_4(&log_sys.buf[log_sys.buf_free + 9], m_crc);
+      log_sys.buf_free+= 8 + 5;
+    }
+    else
+    {
+      mach_write_to_4(&log_sys.buf[log_sys.buf_free + 1], m_crc);
+      log_sys.buf_free+= 5;
     }
   }
 #ifdef HAVE_PMEM
@@ -953,9 +958,14 @@ std::pair<lsn_t,mtr_t::page_flush_ahead> mtr_t::finish_write(size_t len)
     byte tail[5 + 8];
     tail[0]= log_sys.get_sequence_bit(start_lsn + len - size);
 
-    mach_write_to_4(tail + 1, m_crc);
     if (m_commit_lsn)
-      mach_write_to_8(tail + 5, m_commit_lsn);
+    {
+      mach_write_to_8(tail + 1, m_commit_lsn);
+      m_crc= my_crc32c(m_crc, tail + 1, 8);
+      mach_write_to_4(tail + 9, m_crc);
+    }
+    else
+      mach_write_to_4(tail + 1, m_crc);
 
     ::memcpy(log_sys.buf + log_sys.buf_free, tail, size_left);
     ::memcpy(log_sys.buf + log_sys.START_OFFSET, tail + size_left,

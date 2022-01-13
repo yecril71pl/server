@@ -2284,6 +2284,17 @@ inline recv_sys_t::parse_mtr_result recv_sys_t::parse(store_t store, source &l)
   if (l.is_eof(4))
     return PREMATURE_EOF;
 
+  uint32_t crc{l.crc32c(begin)};
+
+  if (log_sys.is_encrypted())
+  {
+    if (l.is_eof(7 + 4))
+      return PREMATURE_EOF;
+    (l + 1).memcpy(iv, 8);
+    l+= 8;
+    crc= my_crc32c(crc, iv, 8);
+  }
+
   DBUG_EXECUTE_IF("log_intermittent_checksum_mismatch",
                   {
                     static int c;
@@ -2294,19 +2305,10 @@ inline recv_sys_t::parse_mtr_result recv_sys_t::parse(store_t store, source &l)
                     }
                   });
 
-  if (l.crc32c(begin) != (l + 1).read4())
+  if (crc != (l + 1).read4())
     return GOT_EOF;
 
   l+= 5;
-
-  if (log_sys.is_encrypted())
-  {
-    if (l.is_eof(7))
-      return PREMATURE_EOF;
-    l.memcpy(iv, 8);
-    l+= 8;
-  }
-
   ut_d(const source el{l});
   lsn+= l - begin;
   offset= l.ptr - log_sys.buf;
