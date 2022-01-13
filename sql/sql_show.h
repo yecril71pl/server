@@ -164,6 +164,9 @@ public:
   THD *target_thd;  /* thd that we're running SHOW EXPLAIN for */
   THD *request_thd; /* thd that run SHOW EXPLAIN command */
   
+  bool is_json_format= false; /* set to TRUE if you need the result in JSON 
+                              format, FALSE - in traditional tabular */
+
   /* If true, there was some error when producing EXPLAIN output. */
   bool failed_to_produce;
    

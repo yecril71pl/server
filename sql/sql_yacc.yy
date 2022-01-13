@@ -13945,12 +13945,13 @@ show_param:
             Lex->spname= $3;
             Lex->sql_command = SQLCOM_SHOW_CREATE_EVENT;
           }
-        | describe_command FOR_SYM expr
+        | describe_command opt_format_json FOR_SYM expr
           {
             Lex->sql_command= SQLCOM_SHOW_EXPLAIN;
-            if (unlikely(prepare_schema_table(thd, Lex, 0, SCH_EXPLAIN)))
+            if (unlikely(prepare_schema_table(thd, Lex, 0, 
+			      Lex->explain_json ? SCH_EXPLAIN_JSON : SCH_EXPLAIN_TABULAR)))
               MYSQL_YYABORT;
-            add_value_to_list(thd, $3);
+            add_value_to_list(thd, $4);
           }
         | IDENT_sys remember_tok_start wild_and_where
            {
@@ -14123,12 +14124,13 @@ opt_describe_column:
         ;
 
 explain_for_connection:
-          describe_command FOR_SYM CONNECTION_SYM expr
+          describe_command opt_format_json FOR_SYM CONNECTION_SYM expr
           {
             Lex->sql_command= SQLCOM_SHOW_EXPLAIN;
-            if (unlikely(prepare_schema_table(thd, Lex, 0, SCH_EXPLAIN)))
+            if (unlikely(prepare_schema_table(thd, Lex, 0, 
+			    Lex->explain_json ? SCH_EXPLAIN_JSON : SCH_EXPLAIN_TABULAR)))
               MYSQL_YYABORT;
-            add_value_to_list(thd, $4);
+            add_value_to_list(thd, $5);
           }
 		;
 

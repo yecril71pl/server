@@ -137,7 +137,6 @@ send explain select max(c) from t1 where a < 10;
 connection default;
 --source include/wait_condition.inc
 evalp show explain for $thr2;
-# evalp explain for connection $thr2;
 connection con1;
 reap;
 
