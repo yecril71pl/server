@@ -577,7 +577,7 @@ ATTRIBUTE_NOINLINE void mtr_t::encrypt()
 
   m_log.for_each_block([&](mtr_buf_t::block_t *b)
   {
-    ut_ad(t + b->used() <= tmp + srv_page_size);
+    ut_ad(t - tmp + size <= srv_page_size);
     byte *buf= b->begin();
     if (!start)
     {
