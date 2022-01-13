@@ -483,7 +483,8 @@ err_exit:
 		free_first_page();
 
 		if (recv_recovery_is_on()
-		    || srv_operation == SRV_OPERATION_BACKUP) {
+		    || (srv_operation == SRV_OPERATION_BACKUP
+			&& !m_avoid_defer)) {
 			m_defer= true;
 			return DB_SUCCESS;
 		}

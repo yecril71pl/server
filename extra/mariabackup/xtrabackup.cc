@@ -362,6 +362,9 @@ struct ddl_tracker_t {
 
 static ddl_tracker_t ddl_tracker;
 
+/** Store the deferred tablespaces */
+static space_id_to_name_t deferred_spaces;
+
 // Convert non-null terminated filename to space name
 static std::string filename_to_spacename(const void *filename, size_t len);
 
@@ -505,8 +508,8 @@ bool CorruptedPages::empty() const
 }
 
 static void xb_load_single_table_tablespace(const std::string &space_name,
-                                            bool set_size,
-                                            ulint defer_space_id=0);
+                                            ulint defer_space_id=0,
+                                            bool avoid_defer=false);
 static void xb_data_files_close();
 static fil_space_t* fil_space_get_by_name(const char* name);
 
@@ -525,7 +528,7 @@ void CorruptedPages::zero_out_free_pages()
     const std::string &space_name = space_it->second.space_name;
     // There is no need to close tablespaces explixitly as they will be closed
     // in innodb_shutdown().
-    xb_load_single_table_tablespace(space_name, false);
+    xb_load_single_table_tablespace(space_name);
     fil_space_t *space = fil_space_t::get(space_id);
     if (!space)
       die("Can't find space object for space name %s to check corrupted page",
@@ -584,7 +587,8 @@ typedef void (*process_single_tablespace_func_t)(const char *dirname,
                                                  const char *filname,
                                                  bool is_remote,
                                                  bool skip_node_page0,
-                                                 ulint defer_space_id);
+                                                 ulint defer_space_id,
+                                                 bool avoid_defer);
 static dberr_t enumerate_ibd_files(process_single_tablespace_func_t callback);
 
 /* ======== Datafiles iterator ======== */
@@ -1622,7 +1626,7 @@ static std::set<std::string> tables_for_export;
 
 static void append_export_table(const char *dbname, const char *tablename,
                                 bool is_remote, bool skip_node_page0,
-                                ulint defer_space_id)
+                                ulint defer_space_id, bool avoid_defer)
 {
   if(dbname && tablename && !is_remote)
   {
@@ -3225,12 +3229,14 @@ will be set from page 0, what is neccessary for checking and fixing corrupted
 pages.
 @param[in] defer_space_id use the space id to create space object
 when there is deferred tablespace
+@param[in] avoid_defer True if table shouldn't be deferred anymore
 */
 static void xb_load_single_table_tablespace(const char *dirname,
                                             const char *filname,
                                             bool is_remote,
                                             bool skip_node_page0,
-                                            ulint defer_space_id)
+                                            ulint defer_space_id,
+                                            bool avoid_defer)
 {
 	ut_ad(srv_operation == SRV_OPERATION_BACKUP
 	      || srv_operation == SRV_OPERATION_RESTORE_DELTA
@@ -3283,6 +3289,8 @@ static void xb_load_single_table_tablespace(const char *dirname,
 		die("Can't open datafile %s", name);
 	}
 
+	file->m_avoid_defer= avoid_defer;
+
 	for (int i = 0; i < 10; i++) {
 		file->m_defer = false;
 		err = file->validate_first_page(&flush_lsn);
@@ -3302,7 +3310,13 @@ static void xb_load_single_table_tablespace(const char *dirname,
 		my_sleep(1000);
 	}
 
-	if (!defer && file->m_defer) {
+	if (!defer && file->m_defer && !file->m_avoid_defer) {
+		if (file->space_id()) {
+			deferred_spaces[file->space_id()] =
+				filename_to_spacename(
+					file->filepath(),
+					strlen(file->filepath()));
+		}
 		delete file;
 		ut_free(name);
 		return;
@@ -3341,8 +3355,8 @@ static void xb_load_single_table_tablespace(const char *dirname,
 }
 
 static void xb_load_single_table_tablespace(const std::string &space_name,
-                                            bool skip_node_page0,
-                                            ulint defer_space_id)
+                                            ulint defer_space_id,
+                                            bool avoid_defer)
 {
   std::string name(space_name);
   bool is_remote= access((name + ".ibd").c_str(), R_OK) != 0;
@@ -3359,7 +3373,7 @@ static void xb_load_single_table_tablespace(const std::string &space_name,
   *p= 0;
   const char *tablename= p + 1;
   xb_load_single_table_tablespace(dbname, tablename, is_remote,
-                                  skip_node_page0, defer_space_id);
+                                  false, defer_space_id, avoid_defer);
 }
 
 #ifdef _WIN32
@@ -3621,7 +3635,7 @@ static dberr_t enumerate_ibd_files(process_single_tablespace_func_t callback)
 			const bool is_isl = ends_with(dbinfo.name, ".isl");
 			if (is_isl || ends_with(dbinfo.name,".ibd")) {
 				(*callback)(nullptr, dbinfo.name, is_isl,
-					    false, 0);
+					    false, 0, false);
 			}
 		}
 
@@ -3674,7 +3688,7 @@ static dberr_t enumerate_ibd_files(process_single_tablespace_func_t callback)
 				if (strlen(fileinfo.name) > 4) {
 					bool is_isl= false;
 					if (ends_with(fileinfo.name, ".ibd") || ((is_isl = ends_with(fileinfo.name, ".isl"))))
-						(*callback)(dbinfo.name, fileinfo.name, is_isl, false, 0);
+						(*callback)(dbinfo.name, fileinfo.name, is_isl, false, 0, false);
 				}
 			}
 
@@ -4859,10 +4873,18 @@ void backup_fix_ddl(CorruptedPages &corrupted_pages)
 
 	DBUG_EXECUTE_IF("check_mdl_lock_works", DBUG_ASSERT(new_tables.size() == 0););
 
+	for (auto d : deferred_spaces) {
+		bool is_redo_exist =
+			new_tables.find(d.first) != new_tables.end();
+		if (!is_redo_exist) {
+			xb_load_single_table_tablespace(d.second,
+							0, true);
+		}
+	}
+
 	for (const auto &t : new_tables) {
 		if (!check_if_skip_table(t.second.c_str())) {
-			xb_load_single_table_tablespace(t.second, false,
-							t.first);
+			xb_load_single_table_tablespace(t.second, t.first);
 		}
 	}
 

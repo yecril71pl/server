@@ -456,6 +456,11 @@ public:
 	/* Use field st_ino. */
 	struct stat			m_file_info;
 #endif	/* WIN32 */
+
+	/* This variable is being used during backup. It is
+	set to true when tablespace should not be deferred
+	anymore */
+	bool				m_avoid_defer= false;
 };
 
 
