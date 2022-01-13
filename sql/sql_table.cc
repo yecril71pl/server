@@ -1003,7 +1003,15 @@ int write_bin_log(THD *thd, bool clear_error,
     int errcode= 0;
     thd_proc_info(thd, "Writing to binlog");
     if (clear_error)
+    {
+      if (global_system_variables.log_warnings > 2)
+         sql_print_warning("Error code %d of query '%s' is cleared at its "
+                           "binary logging.",
+                           thd->is_error() ?
+                           thd->get_stmt_da()->sql_errno() : 0,
+                           query);
       thd->clear_error();
+    }
     else
       errcode= query_error_code(thd, TRUE);
     error= thd->binlog_query(THD::STMT_QUERY_TYPE,
@@ -7512,9 +7520,19 @@ static bool mysql_inplace_alter_table(THD *thd,
   DBUG_ASSERT(table->s->tmp_table == NO_TMP_TABLE ||  start_alter_id == 0);
 
   if (table->s->tmp_table == NO_TMP_TABLE)
+  {
     if (write_bin_log_start_alter(thd, partial_alter, start_alter_id,
                                   if_exists))
       goto cleanup;
+  }
+  else if (start_alter_id)
+  {
+    DBUG_ASSERT(thd->rgi_slave);
+
+    my_error(ER_INCONSISTENT_SLAVE_TEMP_TABLE, MYF(0), thd->query(),
+             table_list->db.str, table_list->table_name.str);
+    goto cleanup;
+  }
 
   DBUG_EXECUTE_IF("start_alter_kill_after_binlog", {
       DBUG_SUICIDE();
@@ -10657,9 +10675,19 @@ do_continue:;
     thd->close_unused_temporary_table_instances(table_list);
 
   if (table->s->tmp_table == NO_TMP_TABLE)
+  {
     if (write_bin_log_start_alter(thd, partial_alter, start_alter_id,
                                   if_exists))
       goto err_new_table_cleanup;
+  }
+  else if (start_alter_id)
+  {
+    DBUG_ASSERT(thd->rgi_slave);
+
+    my_error(ER_INCONSISTENT_SLAVE_TEMP_TABLE, MYF(0), thd->query(),
+             table_list->db.str, table_list->table_name.str);
+    goto err_new_table_cleanup;
+  }
 
   DBUG_EXECUTE_IF("start_alter_delay_master", {
     debug_sync_set_action(thd,
