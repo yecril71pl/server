@@ -419,7 +419,9 @@ enum srv_operation_mode {
 	/** Mariabackup restoring the incremental part of a backup */
 	SRV_OPERATION_RESTORE_DELTA,
 	/** Mariabackup restoring a backup for subsequent --export */
-	SRV_OPERATION_RESTORE_EXPORT
+	SRV_OPERATION_RESTORE_EXPORT,
+	/** Mariabackup backup shouldn't defer the tablespace */
+	SRV_OPERATION_BACKUP_NO_DEFER
 };
 
 /** Current mode of operation */

@@ -2432,6 +2432,7 @@ fil_ibd_discover(
 		switch (srv_operation) {
 		case SRV_OPERATION_BACKUP:
 		case SRV_OPERATION_RESTORE_DELTA:
+		case SRV_OPERATION_BACKUP_NO_DEFER:
 			ut_ad(0);
 			break;
 		case SRV_OPERATION_RESTORE_EXPORT:
