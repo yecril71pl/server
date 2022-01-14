@@ -37,7 +37,7 @@ tcert=""
 tcap=""
 tpem=""
 tkey=""
-tmode="DISABLED"
+tmode='DISABLED'
 sockopt=""
 progress=""
 ttime=0
@@ -82,7 +82,7 @@ backup_threads=""
 encrypt_threads=""
 encrypt_chunk=""
 
-readonly SECRET_TAG="secret"
+readonly SECRET_TAG='secret'
 
 # Required for backup locks
 # For backup locks it is 1 sent by joiner
@@ -101,16 +101,13 @@ if [ -z "$BACKUP_BIN" ]; then
 fi
 
 DATA="$WSREP_SST_OPT_DATA"
-INFO_FILE="xtrabackup_galera_info"
-IST_FILE="xtrabackup_ist"
+INFO_FILE='xtrabackup_galera_info'
+IST_FILE='xtrabackup_ist'
 MAGIC_FILE="$DATA/$INFO_FILE"
 
 INNOAPPLYLOG="$DATA/mariabackup.prepare.log"
 INNOMOVELOG="$DATA/mariabackup.move.log"
 INNOBACKUPLOG="$DATA/mariabackup.backup.log"
-
-# Setting the path for ss and ip
-export PATH="/usr/sbin:/sbin:$PATH"
 
 timeit()
 {
@@ -229,7 +226,7 @@ get_transfer()
     if [ $tfmt = 'nc' ]; then
         wsrep_log_info "Using netcat as streamer"
         wsrep_check_programs nc
-        tcmd="nc"
+        tcmd='nc'
         if [ "$WSREP_SST_OPT_ROLE" = 'joiner' ]; then
             if nc -h 2>&1 | grep -q 'ncat'; then
                 wsrep_log_info "Using Ncat as streamer"
@@ -453,7 +450,7 @@ adjust_progress()
         fi
     elif [ -z "$progress" -a -n "$rlimit" ]; then
             # When rlimit is non-zero
-            pcmd="pv -q"
+            pcmd='pv -q'
     fi
 
     if [ -n "$rlimit" -a "$WSREP_SST_OPT_ROLE" = 'donor' ]; then
@@ -824,21 +821,13 @@ if "$BACKUP_BIN" --help 2>/dev/null | grep -qw -- '--version-check'; then
     disver=' --no-version-check'
 fi
 
-# if no command line argument and INNODB_DATA_HOME_DIR environment variable
-# is not set, try to get it from my.cnf:
-if [ -z "$INNODB_DATA_HOME_DIR" ]; then
-    INNODB_DATA_HOME_DIR=$(parse_cnf '--mysqld' 'innodb-data-home-dir')
-fi
-
 OLD_PWD="$(pwd)"
 
-cd "$WSREP_SST_OPT_DATA"
-if [ -n "$INNODB_DATA_HOME_DIR" ]; then
-    # handle both relative and absolute paths
-    [ ! -d "$INNODB_DATA_HOME_DIR" ] && mkdir -p "$INNODB_DATA_HOME_DIR"
-    cd "$INNODB_DATA_HOME_DIR"
+if [ -n "$DATA" -a "$DATA" != '.' ]; then
+    [ ! -d "$DATA" ] && mkdir -p "$DATA"
+    cd "$DATA"
 fi
-INNODB_DATA_HOME_DIR=$(pwd -P)
+DATA_DIR="$(pwd -P)"
 
 cd "$OLD_PWD"
 
@@ -866,7 +855,7 @@ if [ $ssyslog -eq 1 ]; then
 else
     if [ $sstlogarchive -eq 1 ]
     then
-        ARCHIVETIMESTAMP=$(date "+%Y.%m.%d-%H.%M.%S.%N")
+        ARCHIVETIMESTAMP=$(date '+%Y.%m.%d-%H.%M.%S.%N')
 
         if [ -n "$sstlogarchivedir" ]; then
             if [ ! -d "$sstlogarchivedir" ]; then
@@ -1100,22 +1089,53 @@ then
         wsrep_log_info "Stale sst_in_progress file: $SST_PROGRESS_FILE"
     [ -n "$SST_PROGRESS_FILE" ] && touch "$SST_PROGRESS_FILE"
 
-    ib_home_dir="$INNODB_DATA_HOME_DIR"
+    # if no command line argument and INNODB_DATA_HOME_DIR environment
+    # variable is not set, try to get it from the my.cnf:
+    if [ -z "$INNODB_DATA_HOME_DIR" ]; then
+        INNODB_DATA_HOME_DIR=$(parse_cnf '--mysqld' 'innodb-data-home-dir')
+        INNODB_DATA_HOME_DIR=$(trim_dir "$INNODB_DATA_HOME_DIR")
+    fi
+
+    if [ -n "$INNODB_DATA_HOME_DIR" -a "$INNODB_DATA_HOME_DIR" != '.' ]; then
+        # handle both relative and absolute paths:
+        cd "$DATA"
+        [ ! -d "$INNODB_DATA_HOME_DIR" ] && mkdir -p "$INNODB_DATA_HOME_DIR"
+        cd "$INNODB_DATA_HOME_DIR"
+        ib_home_dir="$(pwd -P)"
+        cd "$OLD_PWD"
+    fi
 
     # if no command line argument and INNODB_LOG_GROUP_HOME is not set,
-    # try to get it from my.cnf:
+    # then try to get it from the my.cnf:
     if [ -z "$INNODB_LOG_GROUP_HOME" ]; then
         INNODB_LOG_GROUP_HOME=$(parse_cnf '--mysqld' 'innodb-log-group-home-dir')
+        INNODB_LOG_GROUP_HOME=$(trim_dir "$INNODB_LOG_GROUP_HOME")
     fi
 
-    ib_log_dir="$INNODB_LOG_GROUP_HOME"
+    if [ -n "$INNODB_LOG_GROUP_HOME" -a "$INNODB_LOG_GROUP_HOME" != '.' ]; then
+        # handle both relative and absolute paths:
+        cd "$DATA"
+        [ ! -d "$INNODB_LOG_GROUP_HOME" ] && mkdir -p "$INNODB_LOG_GROUP_HOME"
+        cd "$INNODB_LOG_GROUP_HOME"
+        ib_log_dir="$(pwd -P)"
+        cd "$OLD_PWD"
+    fi
 
-    # if no command line argument then try to get it from my.cnf:
+    # if no command line argument and INNODB_UNDO_DIR is not set,
+    # then try to get it from the my.cnf:
     if [ -z "$INNODB_UNDO_DIR" ]; then
         INNODB_UNDO_DIR=$(parse_cnf '--mysqld' 'innodb-undo-directory')
+        INNODB_UNDO_DIR=$(trim_dir "$INNODB_UNDO_DIR")
     fi
 
-    ib_undo_dir="$INNODB_UNDO_DIR"
+    if [ -n "$INNODB_UNDO_DIR" -a "$INNODB_UNDO_DIR" != '.' ]; then
+        # handle both relative and absolute paths:
+        cd "$DATA"
+        [ ! -d "$INNODB_UNDO_DIR" ] && mkdir -p "$INNODB_UNDO_DIR"
+        cd "$INNODB_UNDO_DIR"
+        ib_undo_dir="$(pwd -P)"
+        cd "$OLD_PWD"
+    fi
 
     if [ -n "$backup_threads" ]; then
         impts="--parallel=$backup_threads${impts:+ }$impts"
@@ -1162,7 +1182,7 @@ then
                 exit 42
             fi
             CN=$("$OPENSSL_BINARY" x509 -noout -subject -in "$tpem" | \
-                 tr "," "\n" | grep -F 'CN =' | cut -d= -f2 | sed s/^\ // | \
+                 tr ',' '\n' | grep -F 'CN =' | cut -d= -f2 | sed s/^\ // | \
                  sed s/\ %//)
         fi
         MY_SECRET="$(wsrep_gen_secret)"
@@ -1236,14 +1256,29 @@ then
 
         if [ -n "$WSREP_SST_OPT_BINLOG" ]; then
             binlog_dir=$(dirname "$WSREP_SST_OPT_BINLOG")
-            if [ -d "$binlog_dir" ]; then
-                cd "$binlog_dir"
-                wsrep_log_info "Cleaning the binlog directory $binlog_dir as well"
-                rm -fv "$WSREP_SST_OPT_BINLOG".[0-9]* 1>&2 \+ || :
-                [ -f "$WSREP_SST_OPT_BINLOG_INDEX" ] && \
-                    rm -fv "$WSREP_SST_OPT_BINLOG_INDEX" 1>&2 \+
-                cd "$OLD_PWD"
+            binlog_base=$(basename "$WSREP_SST_OPT_BINLOG")
+            binlog_index="$WSREP_SST_OPT_BINLOG_INDEX"
+            binlog_explicit=0
+            if [ -n "$binlog_dir" -a "$binlog_dir" != '.' ]; then
+                binlog_explicit=1
+                if [ -d "$binlog_dir" ]; then
+                    cd "$binlog_dir"
+                    wsrep_log_info \
+                       "Cleaning the binlog directory $binlog_dir as well"
+                    if [ -f "$binlog_index" ]; then
+                        binlogs=$(cat "$binlog_index")
+                        rm -fv "$binlog_index" 1>&2 \+
+                        cd "$DATA_DIR"
+                        echo "$binlogs" | \
+                        while read bin_file || [ -n "$bin_file" ]; do
+                            rm -fv "$bin_file" 1>&2 \+ || :
+                        done
+                    else
+                        rm -fv "$binlog_base".[0-9]* 1>&2 \+ || :
+                    fi
+                fi
             fi
+            cd "$OLD_PWD"
         fi
 
         TDATA="$DATA"
@@ -1293,7 +1328,7 @@ then
 
             # Decompress the qpress files
             wsrep_log_info "Decompression with $nproc threads"
-            timeit "Joiner-Decompression" \
+            timeit 'Joiner-Decompression' \
                    "find '$DATA' -type f -name '*.qp' -printf '%p\n%h\n' | $dcmd"
             extcode=$?
 
@@ -1312,24 +1347,36 @@ then
         fi
 
         if  [ -n "$WSREP_SST_OPT_BINLOG" ]; then
-
-            BINLOG_DIRNAME=$(dirname "$WSREP_SST_OPT_BINLOG")
-            BINLOG_FILENAME=$(basename "$WSREP_SST_OPT_BINLOG")
-
-            # To avoid comparing data directory and BINLOG_DIRNAME
-            mv "$DATA/$BINLOG_FILENAME".* "$BINLOG_DIRNAME/" 2>/dev/null || :
-
-            cd "$BINLOG_DIRNAME"
-            for bfile in $(ls -1 "$BINLOG_FILENAME".[0-9]*); do
-                echo "$BINLOG_DIRNAME/$bfile" >> "$WSREP_SST_OPT_BINLOG_INDEX"
-            done
+            cd "$DATA"
+            binlogs=""
+            if [ -f 'xtrabackup_binlog_info' ]; then
+                NL=$'\n'
+                while read bin_string || [ -n "$bin_string" ]; do
+                    bin_file=$(echo "$bin_string" | cut -f1)
+                    if [ -f "$bin_file" ]; then
+                        binlogs="$binlogs${binlogs:+$NL}$bin_file"
+                    fi
+                done < 'xtrabackup_binlog_info'
+            else
+                binlogs=$(ls -d -1 "$binlog_base".[0-9]* 2>/dev/null || :)
+            fi
+            if [ -n "$binlogs" ]; then
+                cd "$DATA_DIR"
+                if [ $binlog_explicit -ne 0 ]; then
+                    [ ! -d "$binlog_dir" ] && mkdir -p "$binlog_dir"
+                    cd "$binlog_dir"
+                fi
+                echo "$binlogs" | \
+                while read bin_file || [ -n "$bin_file" ]; do
+                    echo "$binlog_dir${binlog_dir:+/}$bin_file" >> "$binlog_index"
+                done
+            fi
             cd "$OLD_PWD"
-
         fi
 
         wsrep_log_info "Preparing the backup at $DATA"
         setup_commands
-        timeit "mariabackup prepare stage" "$INNOAPPLY"
+        timeit 'mariabackup prepare stage' "$INNOAPPLY"
 
         if [ $? -ne 0 ]; then
             wsrep_log_error "mariabackup apply finished with errors." \
@@ -1340,7 +1387,7 @@ then
         MAGIC_FILE="$TDATA/$INFO_FILE"
 
         wsrep_log_info "Moving the backup to $TDATA"
-        timeit "mariabackup move stage" "$INNOMOVE"
+        timeit 'mariabackup move stage' "$INNOMOVE"
         if [ $? -eq 0 ]; then
             wsrep_log_info "Move successful, removing $DATA"
             rm -rf "$DATA"
