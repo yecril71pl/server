@@ -2112,9 +2112,11 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
       }
 
       int sa_result= 0;
-      if (gtid_flags_extra & (Gtid_log_event::FL_START_ALTER_E1 |
-                              Gtid_log_event::FL_COMMIT_ALTER_E1 |
-                              Gtid_log_event::FL_ROLLBACK_ALTER_E1))
+      bool is_2p_alter= gtid_flags_extra &
+        (Gtid_log_event::FL_START_ALTER_E1 |
+         Gtid_log_event::FL_COMMIT_ALTER_E1 |
+         Gtid_log_event::FL_ROLLBACK_ALTER_E1);
+      if (is_2p_alter)
         sa_result= handle_split_alter_query_log_event(rgi, skip_error_check);
       if (sa_result == 0)
       {
@@ -2158,6 +2160,12 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
         goto end;
       }
       thd->variables.option_bits&= ~OPTION_MASTER_SQL_ERROR;
+      if (is_2p_alter && !rgi->is_parallel_exec)
+      {
+        rgi->gtid_ev_flags_extra= 0;
+        rgi->direct_commit_alter= 0;
+        rgi->gtid_ev_sa_seq_no= 0;
+      }
     }
     else
     {
