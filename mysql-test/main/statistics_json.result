@@ -8300,8 +8300,8 @@ from mysql.column_stats where table_name='t1' and db_name=database();
 histogram
 {
   "target_histogram_size": 254,
-  "collected_at": "2022-01-14 20:01:53 MSK",
-  "collected_by": "10.8.0-MariaDB-debug-log",
+  "collected_at": "REPLACED",
+  "collected_by": "REPLACED",
   "histogram_hb": [
     {
       "start_hex": "0000000000000001",

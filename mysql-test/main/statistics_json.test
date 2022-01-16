@@ -454,6 +454,7 @@ insert into t1 values
   (x'01'),(x'10'),(x'BE562B1A99001918');
 set histogram_type= JSON_HB;
 analyze table t1 persistent for all;
+--source include/json_hb_histogram.inc
 select histogram
 from mysql.column_stats where table_name='t1' and db_name=database();
 
