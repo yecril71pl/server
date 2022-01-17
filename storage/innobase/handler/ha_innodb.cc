@@ -15286,6 +15286,7 @@ ha_innobase::check(
 				" entries, should be " ULINTPF ".",
 				index->name(), n_rows, n_rows_in_table);
 			is_ok = false;
+                        ut_ad(false);
 			dict_set_corrupted(index, "CHECK TABLE; Wrong count",
 					   false);
 		}
