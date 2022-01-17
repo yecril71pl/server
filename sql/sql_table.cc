@@ -96,7 +96,7 @@ static bool fix_constraints_names(THD *, List<Virtual_column_info> *,
                                   const HA_CREATE_INFO *);
 static bool wait_for_master(THD *thd);
 static int process_master_state(THD *thd, int alter_result,
-                                uint64 &start_alter_id);
+                                uint64 &start_alter_id, bool if_exists);
 static bool
 write_bin_log_start_alter_rollback(THD *thd, uint64 &start_alter_id,
                                    bool &partial_alter, bool if_exists);
@@ -7366,7 +7366,7 @@ write_bin_log_start_alter_rollback(THD *thd, uint64 &start_alter_id,
     */
     if (info->state == start_alter_state::REGISTERED)
       wait_for_master(thd);
-    if(process_master_state(thd, 1, start_alter_id))
+    if(process_master_state(thd, 1, start_alter_id, if_exists))
       return true;
   }
   else
@@ -9593,12 +9593,22 @@ static void alter_committed(THD *thd, start_alter_info* info, Master_info *mi)
   @retval 0 Ok
 */
 static int process_master_state(THD *thd, int alter_result,
-                                uint64 &start_alter_id)
+                                uint64 &start_alter_id, bool if_exists)
 {
 #ifdef HAVE_REPLICATION
   start_alter_info *info= thd->rgi_slave->sa_info;
+  bool partial_alter= false;
 
-  DBUG_ASSERT(info->state > start_alter_state::REGISTERED);
+  if (info->state == start_alter_state::INVALID)
+  {
+    /* the caller has not yet called SA logging nor wait for master decision */
+    if (!write_bin_log_start_alter(thd, partial_alter, start_alter_id,
+                                   if_exists))
+      wait_for_master(thd);
+
+    DBUG_ASSERT(!partial_alter);
+  }
+
   /* this function shouldn't be called twice */
   DBUG_ASSERT(start_alter_id);
 
@@ -9839,6 +9849,7 @@ bool mysql_alter_table(THD *thd, const LEX_CSTRING *new_db,
   }
 
   table= table_list->table;
+  bool is_reg_table= table->s->tmp_table == NO_TMP_TABLE;
 
 #ifdef WITH_WSREP
   if (WSREP(thd) &&
@@ -11100,7 +11111,14 @@ end_inplace:
 
   if(start_alter_id)
   {
-    if (process_master_state(thd, 0, start_alter_id))
+    if (!is_reg_table)
+    {
+      my_error(ER_INCONSISTENT_SLAVE_TEMP_TABLE, MYF(0), thd->query(),
+               table_list->db.str, table_list->table_name.str);
+      DBUG_RETURN(true);
+    }
+
+    if (process_master_state(thd, 0, start_alter_id, if_exists))
       DBUG_RETURN(true);
   }
   else if (!binlog_as_create_select)
