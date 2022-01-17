@@ -1005,11 +1005,12 @@ int write_bin_log(THD *thd, bool clear_error,
     if (clear_error)
     {
       if (global_system_variables.log_warnings > 2)
-         sql_print_warning("Error code %d of query '%s' is cleared at its "
-                           "binary logging.",
-                           thd->is_error() ?
-                           thd->get_stmt_da()->sql_errno() : 0,
-                           query);
+      {
+        uint err_clear= thd->is_error() ? thd->get_stmt_da()->sql_errno() : 0;
+        if (err_clear)
+          sql_print_warning("Error code %d of query '%s' is cleared at its "
+                            "binary logging.", err_clear, query);
+      }
       thd->clear_error();
     }
     else
