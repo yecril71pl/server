@@ -1803,7 +1803,8 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
   if (info->direct_commit_alter)
   {
     rgi->direct_commit_alter= true; // execute the query as if there was no SA
-    goto cleanup;
+    if (is_CA)
+      goto cleanup;
   }
 
 write_binlog:
