@@ -366,14 +366,10 @@ bool sequence_insert(THD *thd, LEX *lex, TABLE_LIST *org_table_list)
   seq->reserved_until= seq->start;
   error= seq->write_initial_sequence(table);
   {
-    uint save_unsafe_rollback_flags=
-      thd->transaction->stmt.m_unsafe_rollback_flags;
     if (trans_commit_stmt(thd))
       error= 1;
-    thd->transaction->stmt.m_unsafe_rollback_flags=
-      save_unsafe_rollback_flags;
   }
-  if (trans_commit_implicit(thd))
+  if (trans_commit_implicit(thd, true))
     error= 1;
 
   if (!temporary_table)
