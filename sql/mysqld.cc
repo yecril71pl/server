@@ -3679,7 +3679,7 @@ static void my_malloc_size_cb_func(long long size, my_bool is_thread_specific)
       }
     }
     DBUG_ASSERT((longlong) thd->status_var.local_memory_used >= 0 ||
-                !debug_assert_on_not_freed_memory);
+                !debug_assert_on_not_freed_memory || thd->rgi_slave);
   }
   else if (likely(thd))
   {

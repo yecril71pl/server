@@ -1742,8 +1742,14 @@ THD::~THD()
   {
     DBUG_PRINT("error", ("memory_used: %lld", status_var.local_memory_used));
     SAFEMALLOC_REPORT_MEMORY(thread_id);
+    /*
+      Slave applier threads do not own individual temporary tables. A table
+      can be opened by one and closed by another thread. The temporary table
+      list can be also empty at the assert point.
+      So the slave applier thread has to be exempted.
+    */
     DBUG_ASSERT(status_var.local_memory_used == 0 ||
-                !debug_assert_on_not_freed_memory);
+                !debug_assert_on_not_freed_memory || rgi_slave);
   }
   update_global_memory_status(status_var.global_memory_used);
   set_current_thd(orig_thd == this ? 0 : orig_thd);
