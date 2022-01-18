@@ -982,7 +982,7 @@ bool Sql_cmd_alter_sequence::execute(THD *thd)
   seq->write_unlock(table);
   if (trans_commit_stmt(thd))
     error= 1;
-  if (trans_commit_implicit(thd))
+  if (trans_commit_implicit(thd, true))
     error= 1;
   if (likely(!error))
     error= write_bin_log(thd, 1, thd->query(), thd->query_length());

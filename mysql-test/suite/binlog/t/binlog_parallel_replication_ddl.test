@@ -10,6 +10,7 @@ RESET MASTER;
 # Prove it is logged with the DDL flag.
 CREATE OR REPLACE SEQUENCE s1;
 CREATE OR REPLACE SEQUENCE s1;
+ALTER SEQUENCE s1 MINVALUE = 1;
 
 # This one has been always correct.
 DROP SEQUENCE s1;
