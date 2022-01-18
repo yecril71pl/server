@@ -36,7 +36,6 @@ Created 11/5/1995 Heikki Tuuri
 #include "mach0data.h"
 #include "buf0buf.h"
 #include "buf0checksum.h"
-#include "ut0crc32.h"
 #include <string.h>
 
 #ifndef UNIV_INNOCHECKSUM
@@ -608,8 +607,8 @@ bool buf_page_is_corrupted(bool check_lsn, const byte *read_buf,
 			}
 		});
 
-		if (crc32 != ut_crc32(read_buf,
-				      size - FIL_PAGE_FCRC32_CHECKSUM)) {
+		if (crc32 != my_crc32c(0, read_buf,
+				       size - FIL_PAGE_FCRC32_CHECKSUM)) {
 			return true;
 		}
 		static_assert(FIL_PAGE_FCRC32_KEY_VERSION == 0, "alignment");
