@@ -155,6 +155,8 @@ sub test_drop
     }
   }
   $dbh->do("drop table if exists $firsttable,${firsttable}_$id") || die "Got error on drop table: $dbh->errstr\n";
+  # MDEV-27541: DROP PROCEDURE IF EXISTS should not error out if the procedure does not exist
+  $dbh->do("drop procedure if exists mdev_27541_$id") || die "Got error on drop table: $dbh->errstr\n";
   $dbh->disconnect; $dbh=0;
   print "Test_drop: Did a drop $i times\n";
   exit(0);
