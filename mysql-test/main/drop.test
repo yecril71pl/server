@@ -359,3 +359,10 @@ drop table mysqltest.does_not_exists;
 drop database mysqltest;
 drop database mysqltest;
 set @@session.sql_if_exists=0;
+
+--echo #
+--echo # MDEV-27541 DROP PROCEDURE IF EXISTS
+--echo # should not error out when it does not
+--echo #
+use test;
+drop procedure if exists mdev_27541_does_not_exist;
